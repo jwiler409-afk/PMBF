@@ -1,0 +1,1349 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#1a73e8">
+    <meta name="description" content="PMBF - Promotion Méta-batisseur Financement - Gestion des finances de la classe Terminale NS4">
+    <link rel="manifest" href="data:application/json,{%22name%22:%22PMBF%20Financement%22,%22short_name%22:%22PMBF%22,%22start_url%22:%22/%22,%22display%22:%22standalone%22,%22background_color%22:%22%23ffffff%22,%22theme_color%22:%221a73e8%22,%22orientation%22:%22portrait-primary%22,%22icons%22:[{%22src%22:%22data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 192 192%27><rect fill=%271a73e8%27 width=%27192%27 height=%27192%27/><text x=%2796%27 y=%27120%27 font-size=%27100%27 font-weight=%27bold%27 fill=%27white%27 text-anchor=%27middle%27>P</text></svg>%22,%22sizes%22:%22192x192%22,%22type%22:%22image/svg+xml%22,%22purpose%22:%22any%22}]}">
+    <title>PMBF - Financement Classe</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .app-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            color: #1a73e8;
+            font-size: 28px;
+        }
+
+        .user-info {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .nav-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .nav-tabs button {
+            padding: 12px 24px;
+            background: white;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .nav-tabs button.active {
+            background: #1a73e8;
+            color: white;
+            border-color: #1a73e8;
+        }
+
+        .nav-tabs button:hover {
+            border-color: #1a73e8;
+        }
+
+        .section {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .section.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            transition: transform 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .budget-card {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .budget-card:hover {
+            transform: translateY(-4px);
+        }
+
+        .budget-image {
+            width: 100%;
+            height: 200px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 48px;
+        }
+
+        .budget-content {
+            padding: 15px;
+        }
+
+        .budget-content h3 {
+            color: #1a73e8;
+            margin-bottom: 8px;
+        }
+
+        .budget-content p {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 10px;
+        }
+
+        .amount {
+            font-size: 18px;
+            font-weight: bold;
+            color: #28a745;
+            margin-bottom: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #1a73e8;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: #1a73e8;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #1557b0;
+            transform: translateY(-2px);
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+
+        .table th,
+        .table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .stat-box {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .stat-box h3 {
+            color: #666;
+            font-size: 12px;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+
+        .stat-box .value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #1a73e8;
+        }
+
+        .partner-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 20px;
+        }
+
+        .partner-card {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .partner-card:hover {
+            transform: translateY(-4px);
+        }
+
+        .partner-image {
+            width: 100%;
+            height: 180px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 36px;
+        }
+
+        .partner-info {
+            padding: 15px;
+        }
+
+        .partner-info h4 {
+            color: #1a73e8;
+            margin-bottom: 8px;
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .alert-info {
+            background: #e7f3ff;
+            color: #004085;
+            border: 1px solid #b3d9ff;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .login-container {
+            max-width: 400px;
+            margin: 100px auto;
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        }
+
+        .login-container h1 {
+            color: #1a73e8;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .login-container .form-group input {
+            text-transform: uppercase;
+            font-size: 18px;
+            letter-spacing: 2px;
+            text-align: center;
+        }
+
+        .key-input {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .key-input input {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            text-transform: uppercase;
+            text-align: center;
+        }
+
+        .key-input input:first-child {
+            max-width: 50px;
+        }
+
+        .install-prompt {
+            background: #fff3cd;
+            border: 1px solid #ffeeba;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .install-prompt.show {
+            display: block;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-close {
+            float: right;
+            font-size: 24px;
+            cursor: pointer;
+            color: #999;
+        }
+
+        .modal-close:hover {
+            color: #333;
+        }
+
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+
+            .partner-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .header {
+                flex-direction: column;
+                gap: 15px;
+            }
+
+            .stats {
+                grid-template-columns: 1fr;
+            }
+
+            .nav-tabs {
+                gap: 5px;
+            }
+
+            .nav-tabs button {
+                padding: 10px 15px;
+                font-size: 12px;
+            }
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #1a73e8;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container" id="app">
+        <!-- Login Section -->
+        <div id="loginSection" class="login-container">
+            <h1>🏦 PMBF</h1>
+            <h3 style="text-align: center; color: #666; margin-bottom: 30px;">Promotion Méta-batisseur Financement</h3>
+            
+            <div class="install-prompt" id="installPrompt">
+                <strong>📱 Installer l'app:</strong> Cliquez sur le menu de votre navigateur pour installer PMBF sur votre écran d'accueil.
+            </div>
+
+            <div class="form-group">
+                <label>Clé d'accès</label>
+                <input type="text" id="accessKey" placeholder="Exemple: A123 ou ADMIN" style="text-transform: uppercase; font-size: 16px; letter-spacing: 1px; text-align: center;">
+            </div>
+            <button class="btn btn-primary" style="width: 100%; padding: 15px;" onclick="loginUser()">Connexion</button>
+        </div>
+
+        <!-- Main App (hidden by default) -->
+        <div id="mainApp" style="display: none;">
+            <div class="header">
+                <div>
+                    <h1>🏦 PMBF</h1>
+                </div>
+                <div class="user-info">
+                    <div><strong id="userName">Utilisateur</strong></div>
+                    <div id="adminOptions" style="display: none; margin-top: 10px;">
+                        <button class="btn btn-secondary" onclick="showChangePassword()" style="padding: 6px 10px; font-size: 12px; display: block; margin-bottom: 5px;">🔐 Changer Mot de Passe</button>
+                    </div>
+                    <button class="btn btn-secondary" onclick="logout()" style="margin-top: 10px; padding: 8px 12px; font-size: 12px;">↪️ Déconnexion</button>
+                </div>
+            </div>
+
+            <!-- Navigation Tabs -->
+            <div class="nav-tabs" id="navTabs"></div>
+
+            <!-- Sections -->
+            <div id="sections"></div>
+        </div>
+    </div>
+
+    <!-- Service Worker Registration & Offline Indicator -->
+    <script>
+        // Service Worker Registration
+        if ('serviceWorker' in navigator) {
+            const swCode = `
+const CACHE_NAME = 'pmbf-cache-v1';
+const urlsToCache = [
+    '/',
+    '/index.html',
+    '/manifest.json'
+];
+
+self.addEventListener('install', event => {
+    event.waitUntil(
+        caches.open(CACHE_NAME).then(cache => {
+            return cache.addAll(urlsToCache).catch(() => {
+                console.log('Cache addAll failed, some resources may be offline');
+            });
+        })
+    );
+    self.skipWaiting();
+});
+
+self.addEventListener('activate', event => {
+    event.waitUntil(
+        caches.keys().then(cacheNames => {
+            return Promise.all(
+                cacheNames.map(cacheName => {
+                    if (cacheName !== CACHE_NAME) {
+                        return caches.delete(cacheName);
+                    }
+                })
+            );
+        })
+    );
+    self.clients.claim();
+});
+
+self.addEventListener('fetch', event => {
+    if (event.request.method !== 'GET') {
+        return;
+    }
+
+    event.respondWith(
+        caches.match(event.request).then(response => {
+            if (response) {
+                return response;
+            }
+
+            return fetch(event.request).then(response => {
+                if (!response || response.status !== 200 || response.type === 'error') {
+                    return response;
+                }
+
+                const responseToCache = response.clone();
+                caches.open(CACHE_NAME).then(cache => {
+                    cache.put(event.request, responseToCache);
+                });
+
+                return response;
+            }).catch(() => {
+                return caches.match('/index.html');
+            });
+        })
+    );
+});
+            `;
+
+            const blob = new Blob([swCode], { type: 'application/javascript' });
+            const swUrl = URL.createObjectURL(blob);
+
+            navigator.serviceWorker.register(swUrl).then(reg => {
+                console.log('✅ Service Worker registered');
+            }).catch(err => {
+                console.log('❌ Service Worker registration failed:', err);
+            });
+        }
+
+        // PWA Install Prompt
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', e => {
+            e.preventDefault();
+            deferredPrompt = e;
+            document.getElementById('installPrompt').classList.add('show');
+        });
+
+        document.addEventListener('DOMContentLoaded', function() {
+            if (deferredPrompt) {
+                document.getElementById('installPrompt').classList.add('show');
+            }
+
+            // Restaurer la session et le mot de passe admin
+            const savedAdminPassword = localStorage.getItem('pmbf_adminPassword');
+            if (savedAdminPassword) {
+                adminPassword = savedAdminPassword;
+            }
+
+            // Essayer de restaurer la session
+            if (!restoreSession()) {
+                // Pas de session, montrer le login
+                document.getElementById('loginSection').style.display = 'block';
+                document.getElementById('mainApp').style.display = 'none';
+            }
+        });
+    </script>
+
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js"></script>
+    
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyCUeXoSRTqTm-OwiiAXl2WFnU-PQPHcXqM",
+            authDomain: "pmbf-4be5a.firebaseapp.com",
+            databaseURL: "https://pmbf-4be5a-default-rtdb.firebaseio.com",
+            projectId: "pmbf-4be5a",
+            storageBucket: "pmbf-4be5a.firebasestorage.app",
+            messagingSenderId: "107816389967",
+            appId: "1:107816389967:web:d2dfe55b0896c3ccddc93a",
+            measurementId: "G-VBKZWTL8QF"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        // Global State
+        let currentUser = null;
+        let isAdmin = false;
+        let students = {};
+        let budgets = {};
+        let cashBox = {};
+        let donations = {};
+        let partners = {};
+        let adminPassword = 'admin2024'; // Stockée localement
+
+        // Load Data from Firebase
+        function loadData() {
+            db.ref('students').on('value', snapshot => {
+                students = snapshot.val() || {};
+                updateUI();
+            });
+
+            db.ref('budgets').on('value', snapshot => {
+                budgets = snapshot.val() || {};
+                updateUI();
+            });
+
+            db.ref('cashBox').on('value', snapshot => {
+                cashBox = snapshot.val() || {};
+                updateUI();
+            });
+
+            db.ref('donations').on('value', snapshot => {
+                donations = snapshot.val() || {};
+                updateUI();
+            });
+
+            db.ref('partners').on('value', snapshot => {
+                partners = snapshot.val() || {};
+                updateUI();
+            });
+        }
+
+        // Session Management
+        function saveSession() {
+            localStorage.setItem('pmbf_session', JSON.stringify({
+                user: currentUser,
+                isAdmin: isAdmin,
+                timestamp: new Date().getTime()
+            }));
+        }
+
+        function restoreSession() {
+            const session = localStorage.getItem('pmbf_session');
+            if (session) {
+                try {
+                    const data = JSON.parse(session);
+                    currentUser = data.user;
+                    isAdmin = data.isAdmin;
+                    if (currentUser) {
+                        loadData();
+                        showMainApp();
+                        return true;
+                    }
+                } catch (e) {
+                    console.log('Session invalide');
+                }
+            }
+            return false;
+        }
+
+        // Login Functions
+        function loginUser() {
+            const key = document.getElementById('accessKey').value.toUpperCase().trim();
+
+            if (!key) {
+                alert('Veuillez entrer une clé d\'accès');
+                return;
+            }
+
+            // Vérifier si c'est l'admin
+            if (key === 'ADMIN') {
+                showAdminPassword();
+                return;
+            }
+
+            // Valider format élève (1 lettre + 3 chiffres)
+            const keyRegex = /^[A-Z]\d{3}$/;
+            if (!keyRegex.test(key)) {
+                alert('Format invalide. Utilisez A123 pour élève ou ADMIN pour administrateur');
+                return;
+            }
+
+            db.ref('students').orderByChild('key').equalTo(key).once('value', snapshot => {
+                if (snapshot.exists()) {
+                    const data = Object.entries(snapshot.val())[0];
+                    currentUser = { id: data[0], key: key, name: data[1].name, ...data[1], role: 'student' };
+                    isAdmin = false;
+                    saveSession();
+                    loadData();
+                    showMainApp();
+                } else {
+                    alert('Clé d\'accès invalide');
+                }
+            });
+        }
+
+        function showAdminPassword() {
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <h2>Accès Administrateur</h2>
+                    <div class="form-group">
+                        <label>Mot de passe</label>
+                        <input type="password" id="adminPassInput" placeholder="Entrez le mot de passe">
+                    </div>
+                    <button class="btn btn-primary" onclick="verifyAdminPassword()">Vérifier</button>
+                    <button class="btn btn-secondary" onclick="closeAdminModal()" style="margin-left: 10px;">Annuler</button>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            document.getElementById('adminPassInput').focus();
+        }
+
+        function verifyAdminPassword() {
+            const password = document.getElementById('adminPassInput').value;
+            if (password === adminPassword) {
+                currentUser = { id: 'admin', key: 'ADMIN', name: 'Administrateur', role: 'admin' };
+                isAdmin = true;
+                saveSession();
+                closeAdminModal();
+                loadData();
+                showMainApp();
+            } else {
+                alert('Mot de passe incorrect');
+            }
+        }
+
+        function closeAdminModal() {
+            const modal = document.querySelector('.modal.active');
+            if (modal) {
+                modal.remove();
+            }
+            document.getElementById('accessKey').value = '';
+        }
+
+        function logout() {
+            currentUser = null;
+            isAdmin = false;
+            localStorage.removeItem('pmbf_session');
+            document.getElementById('mainApp').style.display = 'none';
+            document.getElementById('loginSection').style.display = 'block';
+            document.getElementById('accessKey').value = '';
+        }
+
+        function showMainApp() {
+            document.getElementById('loginSection').style.display = 'none';
+            document.getElementById('mainApp').style.display = 'block';
+            document.getElementById('userName').textContent = currentUser.name || 'Utilisateur';
+            
+            if (isAdmin) {
+                document.getElementById('adminOptions').style.display = 'block';
+            } else {
+                document.getElementById('adminOptions').style.display = 'none';
+            }
+            
+            renderTabs();
+        }
+
+        function showChangePassword() {
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <span class="modal-close" onclick="this.parentElement.parentElement.remove()">✕</span>
+                    <h2>🔐 Changer le Mot de Passe</h2>
+                    <div class="form-group">
+                        <label>Ancien mot de passe</label>
+                        <input type="password" id="oldPass" placeholder="Entrez l'ancien mot de passe">
+                    </div>
+                    <div class="form-group">
+                        <label>Nouveau mot de passe</label>
+                        <input type="password" id="newPass" placeholder="Entrez le nouveau mot de passe">
+                    </div>
+                    <div class="form-group">
+                        <label>Confirmer</label>
+                        <input type="password" id="confirmPass" placeholder="Confirmez le mot de passe">
+                    </div>
+                    <button class="btn btn-success" onclick="updateAdminPassword()">Mettre à jour</button>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        function updateAdminPassword() {
+            const oldPass = document.getElementById('oldPass').value;
+            const newPass = document.getElementById('newPass').value;
+            const confirmPass = document.getElementById('confirmPass').value;
+
+            if (oldPass !== adminPassword) {
+                alert('❌ Ancien mot de passe incorrect');
+                return;
+            }
+
+            if (newPass.length < 4) {
+                alert('❌ Le mot de passe doit contenir au moins 4 caractères');
+                return;
+            }
+
+            if (newPass !== confirmPass) {
+                alert('❌ Les mots de passe ne correspondent pas');
+                return;
+            }
+
+            adminPassword = newPass;
+            localStorage.setItem('pmbf_adminPassword', newPass);
+            alert('✅ Mot de passe mis à jour avec succès');
+            document.querySelector('.modal.active').remove();
+        }
+
+        // Render Navigation Tabs
+        function renderTabs() {
+            const navTabs = document.getElementById('navTabs');
+            navTabs.innerHTML = '';
+            const sections = isAdmin ? 
+                ['Élèves', 'Budgets', 'Caisse', 'AyiPay', 'Dons', 'Partenaires'] :
+                ['Tableau de Bord', 'Ma Caisse', 'Partenaires'];
+
+            sections.forEach((section, index) => {
+                const btn = document.createElement('button');
+                btn.textContent = section;
+                btn.className = index === 0 ? 'active' : '';
+                btn.onclick = () => switchSection(index);
+                navTabs.appendChild(btn);
+            });
+
+            renderSections();
+        }
+
+        function switchSection(index) {
+            document.querySelectorAll('.nav-tabs button').forEach((btn, i) => {
+                btn.classList.toggle('active', i === index);
+            });
+            document.querySelectorAll('.section').forEach((sec, i) => {
+                sec.classList.toggle('active', i === index);
+            });
+        }
+
+        // Render Sections Based on Role
+        function renderSections() {
+            const sectionsDiv = document.getElementById('sections');
+            sectionsDiv.innerHTML = '';
+
+            if (isAdmin) {
+                renderAdminSections();
+            } else {
+                renderStudentSections();
+            }
+        }
+
+        function renderStudentSections() {
+            const sectionsDiv = document.getElementById('sections');
+
+            // Dashboard
+            sectionsDiv.innerHTML += `
+                <div class="section active">
+                    <div class="card">
+                        <h2>📊 Tableau de Bord</h2>
+                        <div class="stats">
+                            <div class="stat-box">
+                                <h3>Total Payé</h3>
+                                <div class="value">${calculateStudentTotal()}G</div>
+                            </div>
+                            <div class="stat-box">
+                                <h3>Budgets Actifs</h3>
+                                <div class="value">${Object.keys(budgets).length}</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="grid">
+                        ${Object.entries(budgets).map(([id, budget]) => `
+                            <div class="budget-card">
+                                <div class="budget-image">${budget.emoji || '💰'}</div>
+                                <div class="budget-content">
+                                    <h3>${budget.title}</h3>
+                                    <p>${budget.description}</p>
+                                    <div class="amount">Prix: ${budget.amount}G</div>
+                                    ${budget.imageUrl ? `<img src="${budget.imageUrl}" style="width: 100%; border-radius: 8px; margin-bottom: 10px;">` : ''}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+
+            // My Account (Bank)
+            sectionsDiv.innerHTML += `
+                <div class="section">
+                    <div class="card">
+                        <h2>🏧 Mon Compte en Banque</h2>
+                        <p style="margin-bottom: 20px;">Accès à votre carte virtuelle AyiPay</p>
+                        <a href="https://ayipay.example.com" target="_blank" class="btn btn-primary">Accéder à AyiPay</a>
+                    </div>
+                </div>
+            `;
+
+            // Partners
+            sectionsDiv.innerHTML += `
+                <div class="section">
+                    <div class="card">
+                        <h2>🤝 Partenaires</h2>
+                        <div class="partner-grid">
+                            ${Object.entries(partners).map(([id, partner]) => `
+                                <div class="partner-card">
+                                    <div class="partner-image">${partner.emoji || '🏢'}</div>
+                                    <div class="partner-info">
+                                        <h4>${partner.name}</h4>
+                                        <p style="font-size: 12px; color: #666; margin-bottom: 10px;">${partner.description}</p>
+                                        <a href="${partner.link}" target="_blank" class="btn btn-primary" style="font-size: 12px;">Visiter</a>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderAdminSections() {
+            const sectionsDiv = document.getElementById('sections');
+
+            // Students Section
+            sectionsDiv.innerHTML += `
+                <div class="section active">
+                    <div class="card">
+                        <h2>👨‍🎓 Gestion des Élèves</h2>
+                        <div class="form-group">
+                            <label>Nom de l'Élève</label>
+                            <input type="text" id="studentName" placeholder="Nom complet">
+                        </div>
+                        <div class="form-group">
+                            <label>Email</label>
+                            <input type="email" id="studentEmail" placeholder="email@example.com">
+                        </div>
+                        <button class="btn btn-success" onclick="addStudent()">➕ Ajouter Élève</button>
+                    </div>
+                    <div class="card">
+                        <h3>Liste des Élèves</h3>
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Nom</th>
+                                    <th>Clé d'Accès</th>
+                                    <th>Email</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${Object.entries(students).map(([id, student]) => `
+                                    <tr>
+                                        <td>${student.name}</td>
+                                        <td><strong>${student.key}</strong></td>
+                                        <td>${student.email}</td>
+                                        <td><button class="btn btn-danger" onclick="deleteStudent('${id}')" style="padding: 5px 10px; font-size: 12px;">Supprimer</button></td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+
+            // Budgets Section
+            sectionsDiv.innerHTML += `
+                <div class="section">
+                    <div class="card">
+                        <h2>📋 Créer un Budget</h2>
+                        <div class="form-group">
+                            <label>Titre du Budget</label>
+                            <input type="text" id="budgetTitle" placeholder="Ex: Excursion de fin d'année">
+                        </div>
+                        <div class="form-group">
+                            <label>Description</label>
+                            <textarea id="budgetDesc" placeholder="Détails du budget"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Montant par Élève (Gourdes)</label>
+                            <input type="number" id="budgetAmount" placeholder="1500">
+                        </div>
+                        <div class="form-group">
+                            <label>Lien Image (URL)</label>
+                            <input type="url" id="budgetImage" placeholder="https://...">
+                        </div>
+                        <button class="btn btn-success" onclick="addBudget()">➕ Créer Budget</button>
+                    </div>
+                    <div class="card">
+                        <h3>Budgets Actifs</h3>
+                        <div class="grid">
+                            ${Object.entries(budgets).map(([id, budget]) => `
+                                <div class="budget-card">
+                                    <div class="budget-image">${budget.emoji || '💰'}</div>
+                                    <div class="budget-content">
+                                        <h3>${budget.title}</h3>
+                                        <p>${budget.description}</p>
+                                        <div class="amount">Prix: ${budget.amount}G</div>
+                                        <button class="btn btn-danger" onclick="deleteBudget('${id}')" style="padding: 5px 10px; font-size: 12px;">Supprimer</button>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Cash Box Section
+            sectionsDiv.innerHTML += `
+                <div class="section">
+                    <div class="card">
+                        <h2>💰 Gestion de la Caisse</h2>
+                        <div class="stats">
+                            <div class="stat-box">
+                                <h3>Total Caisse</h3>
+                                <div class="value">${calculateCashBoxTotal()}G</div>
+                            </div>
+                            <div class="stat-box">
+                                <h3>Élèves Ayant Payé</h3>
+                                <div class="value">${calculatePaidStudents()}</div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Enregistrer un Paiement</label>
+                            <select id="paymentStudent">
+                                <option value="">-- Sélectionner un élève --</option>
+                                ${Object.entries(students).map(([id, student]) => `<option value="${id}">${student.name}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Montant (Gourdes)</label>
+                            <input type="number" id="paymentAmount" placeholder="500">
+                        </div>
+                        <button class="btn btn-success" onclick="recordPayment()">✅ Enregistrer Paiement</button>
+                    </div>
+                </div>
+            `;
+
+            // AyiPay Section
+            sectionsDiv.innerHTML += `
+                <div class="section">
+                    <div class="card">
+                        <h2>💳 Intégration AyiPay</h2>
+                        <div class="form-group">
+                            <label>Lien AyiPay</label>
+                            <input type="url" id="ayipayLink" placeholder="https://ayipay.example.com" value="${cashBox.ayipayLink || ''}">
+                        </div>
+                        <div class="form-group">
+                            <label>Logo/Image AyiPay (URL)</label>
+                            <input type="url" id="ayipayImage" placeholder="https://..." value="${cashBox.ayipayImage || ''}">
+                        </div>
+                        <button class="btn btn-primary" onclick="updateAyiPay()">💾 Mettre à jour AyiPay</button>
+                    </div>
+                </div>
+            `;
+
+            // Donations Section
+            sectionsDiv.innerHTML += `
+                <div class="section">
+                    <div class="card">
+                        <h2>🎁 Gestion des Dons</h2>
+                        <div class="form-group">
+                            <label>Nom du Donateur</label>
+                            <input type="text" id="donorName" placeholder="Nom">
+                        </div>
+                        <div class="form-group">
+                            <label>Montant du Don (Gourdes)</label>
+                            <input type="number" id="donorAmount" placeholder="1000">
+                        </div>
+                        <div class="form-group">
+                            <label>Date du Don</label>
+                            <input type="date" id="donorDate">
+                        </div>
+                        <button class="btn btn-success" onclick="addDonation()">➕ Enregistrer Don</button>
+                    </div>
+                    <div class="card">
+                        <h3>Historique des Dons</h3>
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Donateur</th>
+                                    <th>Montant</th>
+                                    <th>Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${Object.entries(donations).map(([id, donation]) => `
+                                    <tr>
+                                        <td>${donation.name}</td>
+                                        <td>${donation.amount}G</td>
+                                        <td>${donation.date}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+
+            // Partners Section
+            sectionsDiv.innerHTML += `
+                <div class="section">
+                    <div class="card">
+                        <h2>🤝 Gestion des Partenaires</h2>
+                        <div class="form-group">
+                            <label>Nom du Partenaire</label>
+                            <input type="text" id="partnerName" placeholder="Ex: Service X">
+                        </div>
+                        <div class="form-group">
+                            <label>Description</label>
+                            <textarea id="partnerDesc" placeholder="Description du partenaire"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Lien (URL)</label>
+                            <input type="url" id="partnerLink" placeholder="https://...">
+                        </div>
+                        <div class="form-group">
+                            <label>Image/Logo (URL)</label>
+                            <input type="url" id="partnerImage" placeholder="https://...">
+                        </div>
+                        <button class="btn btn-success" onclick="addPartner()">➕ Ajouter Partenaire</button>
+                    </div>
+                    <div class="card">
+                        <h3>Partenaires Actuels</h3>
+                        <div class="partner-grid">
+                            ${Object.entries(partners).map(([id, partner]) => `
+                                <div class="partner-card">
+                                    <div class="partner-image">${partner.emoji || '🏢'}</div>
+                                    <div class="partner-info">
+                                        <h4>${partner.name}</h4>
+                                        <p style="font-size: 12px; color: #666;">${partner.description}</p>
+                                        <button class="btn btn-danger" onclick="deletePartner('${id}')" style="padding: 5px 10px; font-size: 12px;">Supprimer</button>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Database Functions
+        function addStudent() {
+            const name = document.getElementById('studentName').value;
+            const email = document.getElementById('studentEmail').value;
+
+            if (!name || !email) {
+                alert('Veuillez remplir tous les champs');
+                return;
+            }
+
+            const key = generateKey();
+            db.ref('students').push({ name, email, key }).then(() => {
+                alert(`✅ Élève ajouté avec la clé: ${key}`);
+                document.getElementById('studentName').value = '';
+                document.getElementById('studentEmail').value = '';
+            });
+        }
+
+        function generateKey() {
+            const letter = String.fromCharCode(65 + Math.floor(Math.random() * 26));
+            const numbers = String(Math.floor(Math.random() * 900) + 100);
+            return letter + numbers;
+        }
+
+        function deleteStudent(id) {
+            if (confirm('Êtes-vous sûr?')) {
+                db.ref('students/' + id).remove();
+            }
+        }
+
+        function addBudget() {
+            const title = document.getElementById('budgetTitle').value;
+            const desc = document.getElementById('budgetDesc').value;
+            const amount = document.getElementById('budgetAmount').value;
+            const image = document.getElementById('budgetImage').value;
+
+            if (!title || !amount) {
+                alert('Veuillez remplir les champs obligatoires');
+                return;
+            }
+
+            db.ref('budgets').push({ title, description: desc, amount, imageUrl: image }).then(() => {
+                alert('✅ Budget créé');
+                document.getElementById('budgetTitle').value = '';
+                document.getElementById('budgetDesc').value = '';
+                document.getElementById('budgetAmount').value = '';
+                document.getElementById('budgetImage').value = '';
+            });
+        }
+
+        function deleteBudget(id) {
+            if (confirm('Êtes-vous sûr?')) {
+                db.ref('budgets/' + id).remove();
+            }
+        }
+
+        function recordPayment() {
+            const studentId = document.getElementById('paymentStudent').value;
+            const amount = document.getElementById('paymentAmount').value;
+
+            if (!studentId || !amount) {
+                alert('Veuillez remplir tous les champs');
+                return;
+            }
+
+            db.ref('cashBox').push({ studentId, amount: parseInt(amount), date: new Date().toLocaleDateString() }).then(() => {
+                alert('✅ Paiement enregistré');
+                document.getElementById('paymentAmount').value = '';
+            });
+        }
+
+        function updateAyiPay() {
+            const link = document.getElementById('ayipayLink').value;
+            const image = document.getElementById('ayipayImage').value;
+
+            db.ref('cashBox').update({ ayipayLink: link, ayipayImage: image }).then(() => {
+                alert('✅ AyiPay mis à jour');
+            });
+        }
+
+        function addDonation() {
+            const name = document.getElementById('donorName').value;
+            const amount = document.getElementById('donorAmount').value;
+            const date = document.getElementById('donorDate').value;
+
+            if (!name || !amount || !date) {
+                alert('Veuillez remplir tous les champs');
+                return;
+            }
+
+            db.ref('donations').push({ name, amount: parseInt(amount), date }).then(() => {
+                alert('✅ Don enregistré');
+                document.getElementById('donorName').value = '';
+                document.getElementById('donorAmount').value = '';
+                document.getElementById('donorDate').value = '';
+            });
+        }
+
+        function addPartner() {
+            const name = document.getElementById('partnerName').value;
+            const desc = document.getElementById('partnerDesc').value;
+            const link = document.getElementById('partnerLink').value;
+            const image = document.getElementById('partnerImage').value;
+
+            if (!name || !link) {
+                alert('Veuillez remplir tous les champs');
+                return;
+            }
+
+            db.ref('partners').push({ name, description: desc, link, imageUrl: image }).then(() => {
+                alert('✅ Partenaire ajouté');
+                document.getElementById('partnerName').value = '';
+                document.getElementById('partnerDesc').value = '';
+                document.getElementById('partnerLink').value = '';
+                document.getElementById('partnerImage').value = '';
+            });
+        }
+
+        function deletePartner(id) {
+            if (confirm('Êtes-vous sûr?')) {
+                db.ref('partners/' + id).remove();
+            }
+        }
+
+        // Helper Functions
+        function calculateStudentTotal() {
+            return Object.values(cashBox).reduce((sum, payment) => {
+                return payment.studentId === currentUser.id ? sum + parseInt(payment.amount || 0) : sum;
+            }, 0);
+        }
+
+        function calculateCashBoxTotal() {
+            return Object.values(cashBox).reduce((sum, payment) => {
+                return sum + parseInt(payment.amount || 0);
+            }, 0);
+        }
+
+        function calculatePaidStudents() {
+            return new Set(Object.values(cashBox).map(p => p.studentId)).size;
+        }
+
+        function updateUI() {
+            if (currentUser) {
+                renderSections();
+            }
+        }
+    </script>
+</body>
+</html>
