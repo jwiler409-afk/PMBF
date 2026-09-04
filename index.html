@@ -493,15 +493,13 @@
         <!-- Login Section -->
         <div id="loginSection" class="login-container">
             <h1>🏦 PMBF</h1>
-            <h3 style="text-align: center; color: #666; margin-bottom: 30px;">Promotion Méta-batisseur Financement</h3>
-            
-            <div class="install-prompt" id="installPrompt">
-                <strong>📱 Installer l'app:</strong> Cliquez sur le menu de votre navigateur pour installer PMBF sur votre écran d'accueil.
-            </div>
+            <h3 style="text-align: center; color: #666; margin-bottom: 15px;">Promotion Méta-batisseur Financement</h3>
+
+            <p style="text-align: center; color: #dc3545; font-weight: 700; margin-bottom: 25px;">Seulement les élèves du PMB sont autorisés</p>
 
             <div class="form-group">
                 <label>Clé d'accès</label>
-                <input type="text" id="accessKey" placeholder="Exemple: A123 ou ADMIN" style="text-transform: uppercase; font-size: 16px; letter-spacing: 1px; text-align: center;">
+                <input type="text" id="accessKey" style="text-transform: uppercase; font-size: 16px; letter-spacing: 1px; text-align: center;">
             </div>
             <button class="btn btn-primary" style="width: 100%; padding: 15px;" onclick="loginUser()">Connexion</button>
         </div>
@@ -521,11 +519,19 @@
                 </div>
             </div>
 
+            <!-- Notification Banner -->
+            <div id="notifBanner"></div>
+
             <!-- Navigation Tabs -->
             <div class="nav-tabs" id="navTabs"></div>
 
             <!-- Sections -->
             <div id="sections"></div>
+        </div>
+
+        <!-- Footer -->
+        <div id="copyrightFooter" style="text-align: center; padding: 20px; color: white; font-size: 13px;">
+            <a href="#" id="footerLink" target="_blank" style="color: white; text-decoration: underline;">© 2026 Wiler-Tech</a>
         </div>
     </div>
 
@@ -612,15 +618,15 @@ self.addEventListener('fetch', event => {
         window.addEventListener('beforeinstallprompt', e => {
             e.preventDefault();
             deferredPrompt = e;
-            document.getElementById('installPrompt').classList.add('show');
         });
 
         document.addEventListener('DOMContentLoaded', function() {
-            if (deferredPrompt) {
-                document.getElementById('installPrompt').classList.add('show');
-            }
-
             // Restaurer la session et le mot de passe admin
+            // Réinitialisation unique du mot de passe admin (corrige les anciens mots de passe bloqués)
+            if (!localStorage.getItem('pmbf_pwReset_v2')) {
+                localStorage.removeItem('pmbf_adminPassword');
+                localStorage.setItem('pmbf_pwReset_v2', 'done');
+            }
             const savedAdminPassword = localStorage.getItem('pmbf_adminPassword');
             if (savedAdminPassword) {
                 adminPassword = savedAdminPassword;
@@ -636,9 +642,130 @@ self.addEventListener('fetch', event => {
     </script>
 
     <!-- Firebase -->
-    <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js"></script>
-    
+    <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-database-compat.js"></script>
+
+    <!-- IMG-LINK-CONVERTER: konvèti foto an lyen (imgbb, catbox si l echwe) pou pa plen espas Firebase -->
+    <style>
+        .img-link-inline { display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+        .img-link-inline .il-preview { display: none; width: 40px; height: 40px; object-fit: cover; border-radius: 6px; border: 1px solid #ddd; }
+        .img-link-inline .il-btn { background: #6c757d; color: white; padding: 6px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; border: none; display: inline-block; }
+        .img-link-inline .il-status { font-size: 12px; color: #1a73e8; }
+        .il-batch-slot { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+        .il-batch-slot .il-preview { display: none; width: 36px; height: 36px; object-fit: cover; border-radius: 6px; }
+        .il-batch-slot .il-link { flex: 1; min-width: 0; padding: 8px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 12px; }
+    </style>
+    <script>
+        const ImgLinkConverter = (function () {
+            const IMGBB_API_KEY = '808b99f038e8855c6e93a124bd09cc6b';
+
+            const LABELS = {
+                convertBtn: '📷 Konvèti Foto',
+                badFile: '❌ Chwazi yon foto.',
+                tooBig: '❌ Foto twò gwo (maks 10 Mo).',
+                converting: '⏳ Ap konvèti...',
+                done: '✅ Konvèti!',
+                failed: '❌ Pa mache, eseye ankò.',
+                batchEmpty: 'Poko gen lyen',
+                copied: '📋 Kopye!'
+            };
+
+            async function uploadToImgbb(file) {
+                const fd = new FormData();
+                fd.append('image', file);
+                const resp = await fetch('https://api.imgbb.com/1/upload?key=' + encodeURIComponent(IMGBB_API_KEY), { method: 'POST', body: fd });
+                const json = await resp.json();
+                if (!resp.ok || !json || !json.success || !json.data) {
+                    throw new Error((json && json.error && json.error.message) || ('HTTP ' + resp.status));
+                }
+                return json.data.display_url || json.data.url;
+            }
+
+            async function uploadToCatbox(file) {
+                const fd = new FormData();
+                fd.append('reqtype', 'fileupload');
+                fd.append('fileToUpload', file);
+                const resp = await fetch('https://catbox.moe/user/api.php', { method: 'POST', body: fd });
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                const url = (await resp.text()).trim();
+                if (!/^https?:\/\//i.test(url)) throw new Error(url || 'echwe');
+                return url;
+            }
+
+            async function convertImageToLink(file) {
+                let url = null;
+                if (IMGBB_API_KEY) { try { url = await uploadToImgbb(file); } catch (e) { /* eseye plan B */ } }
+                if (!url) { try { url = await uploadToCatbox(file); } catch (e) { /* tou de echwe */ } }
+                return url;
+            }
+
+            function attachInline(inputId) {
+                const input = document.getElementById(inputId);
+                if (!input || input.dataset.ilAttached) return;
+                input.dataset.ilAttached = '1';
+
+                const wrap = document.createElement('div');
+                wrap.className = 'img-link-inline';
+                wrap.innerHTML =
+                    '<img class="il-preview" id="ilprev_' + inputId + '">' +
+                    '<label class="il-btn" for="ilfile_' + inputId + '">' + LABELS.convertBtn + '</label>' +
+                    '<input type="file" id="ilfile_' + inputId + '" accept="image/*" style="display:none;">' +
+                    '<span class="il-status" id="ilstatus_' + inputId + '"></span>';
+                input.insertAdjacentElement('afterend', wrap);
+
+                document.getElementById('ilfile_' + inputId).addEventListener('change', function () {
+                    handleInlineUpload(this, inputId);
+                });
+
+                if (input.value) {
+                    const p = document.getElementById('ilprev_' + inputId);
+                    p.src = input.value;
+                    p.style.display = 'inline-block';
+                }
+            }
+
+            async function handleInlineUpload(fileInput, targetInputId) {
+                const file = fileInput.files[0];
+                if (!file) return;
+                const status = document.getElementById('ilstatus_' + targetInputId);
+                const preview = document.getElementById('ilprev_' + targetInputId);
+                const target = document.getElementById(targetInputId);
+
+                if (!file.type || !file.type.startsWith('image/')) { status.textContent = LABELS.badFile; return; }
+                if (file.size > 10 * 1024 * 1024) { status.textContent = LABELS.tooBig; return; }
+
+                status.textContent = LABELS.converting;
+                const url = await convertImageToLink(file);
+
+                if (url) {
+                    target.value = url;
+                    target.dispatchEvent(new Event('input', { bubbles: true }));
+                    target.dispatchEvent(new Event('change', { bubbles: true }));
+                    preview.src = url;
+                    preview.style.display = 'inline-block';
+                    status.textContent = LABELS.done;
+
+                    // Auto-copier le lien
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(url).catch(() => {});
+                    }
+
+                    setTimeout(() => { if (status) status.textContent = ''; }, 2500);
+                } else {
+                    status.textContent = LABELS.failed;
+                }
+                fileInput.value = '';
+            }
+
+            return {
+                IMGBB_API_KEY,
+                LABELS,
+                convertImageToLink,
+                attachInline
+            };
+        })();
+    </script>
+
     <script>
         const firebaseConfig = {
             apiKey: "AIzaSyCUeXoSRTqTm-OwiiAXl2WFnU-PQPHcXqM",
@@ -660,9 +787,29 @@ self.addEventListener('fetch', event => {
         let students = {};
         let budgets = {};
         let cashBox = {};
-        let donations = {};
+        let budgetPayments = {};
+        let donCampaigns = {};
+        let donPayments = {};
         let partners = {};
-        let adminPassword = 'admin2024'; // Stockée localement
+        let settings = {};
+        let adminPassword = '1a2b3c'; // Stockée localement
+
+        // Gestion du bouton "Retour" du téléphone
+        history.pushState({ appState: 'init' }, '', location.href);
+        window.addEventListener('popstate', function () {
+            const openModal = document.querySelector('.modal.active');
+            if (openModal) {
+                openModal.remove();
+                history.pushState({ appState: 'app' }, '', location.href);
+                return;
+            }
+            if (currentUser) {
+                logout();
+                history.pushState({ appState: 'login' }, '', location.href);
+                return;
+            }
+            // Rien d'ouvert et pas connecté: laisser le bouton retour quitter l'app normalement
+        });
 
         // Load Data from Firebase
         function loadData() {
@@ -681,14 +828,29 @@ self.addEventListener('fetch', event => {
                 updateUI();
             });
 
-            db.ref('donations').on('value', snapshot => {
-                donations = snapshot.val() || {};
+            db.ref('budgetPayments').on('value', snapshot => {
+                budgetPayments = snapshot.val() || {};
+                updateUI();
+            });
+
+            db.ref('donCampaigns').on('value', snapshot => {
+                donCampaigns = snapshot.val() || {};
+                updateUI();
+            });
+
+            db.ref('donPayments').on('value', snapshot => {
+                donPayments = snapshot.val() || {};
                 updateUI();
             });
 
             db.ref('partners').on('value', snapshot => {
                 partners = snapshot.val() || {};
                 updateUI();
+            });
+
+            db.ref('settings').on('value', snapshot => {
+                settings = snapshot.val() || {};
+                renderFooter();
             });
         }
 
@@ -871,31 +1033,83 @@ self.addEventListener('fetch', event => {
         }
 
         // Render Navigation Tabs
+        let currentSectionLabels = [];
+
         function renderTabs() {
             const navTabs = document.getElementById('navTabs');
             navTabs.innerHTML = '';
             const sections = isAdmin ? 
-                ['Élèves', 'Budgets', 'Caisse', 'AyiPay', 'Dons', 'Partenaires'] :
-                ['Tableau de Bord', 'Ma Caisse', 'Partenaires'];
+                ['Élèves', 'Budgets', 'Caisse', 'Dons', 'Partenaires'] :
+                ['Tableau de Bord', 'Caisse Personnelle', 'Dons', 'Partenaires'];
+            currentSectionLabels = sections;
 
             sections.forEach((section, index) => {
                 const btn = document.createElement('button');
-                btn.textContent = section;
+                const isNew = (section === 'Budgets' && countNew('budgets') > 0) || (section === 'Dons' && countNew('dons') > 0);
+                btn.innerHTML = section + (isNew ? ' <span style="background:#dc3545; color:white; border-radius:50%; padding:2px 6px; font-size:10px; margin-left:4px;">•</span>' : '');
                 btn.className = index === 0 ? 'active' : '';
-                btn.onclick = () => switchSection(index);
+                btn.onclick = () => switchSection(index, section);
                 navTabs.appendChild(btn);
             });
 
             renderSections();
+            renderNotifBanner();
         }
 
-        function switchSection(index) {
+        function switchSection(index, label) {
             document.querySelectorAll('.nav-tabs button').forEach((btn, i) => {
                 btn.classList.toggle('active', i === index);
             });
             document.querySelectorAll('.section').forEach((sec, i) => {
                 sec.classList.toggle('active', i === index);
             });
+            if (label === 'Budgets') markSeen('budgets');
+            if (label === 'Dons') markSeen('dons');
+            const btn = document.querySelectorAll('.nav-tabs button')[index];
+            if (btn) btn.innerHTML = label;
+            renderNotifBanner();
+        }
+
+        // Notifications
+        function getLastSeen(type) {
+            return parseInt(localStorage.getItem('pmbf_lastSeen_' + type)) || 0;
+        }
+
+        function markSeen(type) {
+            localStorage.setItem('pmbf_lastSeen_' + type, Date.now());
+        }
+
+        function countNew(type) {
+            const lastSeen = getLastSeen(type);
+            if (type === 'budgets') {
+                return Object.values(budgets).filter(b => (b.timestamp || 0) > lastSeen).length;
+            }
+            if (type === 'dons') {
+                return Object.values(donCampaigns).filter(c => (c.createdAt || 0) > lastSeen).length;
+            }
+            return 0;
+        }
+
+        function renderNotifBanner() {
+            const banner = document.getElementById('notifBanner');
+            if (!banner) return;
+            const newBudgets = countNew('budgets');
+            const newDons = countNew('dons');
+            const msgs = [];
+            if (newBudgets > 0) msgs.push(`${newBudgets} nouvo budget(s)`);
+            if (newDons > 0) msgs.push(`${newDons} nouvo don(s)`);
+            if (msgs.length > 0) {
+                banner.innerHTML = `<div class="alert alert-info">🔔 ${msgs.join(' • ')}</div>`;
+            } else {
+                banner.innerHTML = '';
+            }
+        }
+
+        function renderFooter() {
+            const link = document.getElementById('footerLink');
+            if (link) {
+                link.href = settings.devLink || '#';
+            }
         }
 
         // Render Sections Based on Role
@@ -912,16 +1126,23 @@ self.addEventListener('fetch', event => {
 
         function renderStudentSections() {
             const sectionsDiv = document.getElementById('sections');
+            const unpaidDons = getUnpaidDonsForStudent(currentUser.id);
 
             // Dashboard
             sectionsDiv.innerHTML += `
                 <div class="section active">
+                    ${unpaidDons.length > 0 ? `
+                        <div class="alert alert-warning">
+                            ⚠️ <strong>Ou gen don ki pa peye:</strong>
+                            ${unpaidDons.map(d => `${d.count} fwa (${d.total}G)`).join(', ')}
+                        </div>
+                    ` : ''}
                     <div class="card">
                         <h2>📊 Tableau de Bord</h2>
                         <div class="stats">
                             <div class="stat-box">
-                                <h3>Total Payé</h3>
-                                <div class="value">${calculateStudentTotal()}G</div>
+                                <h3>Solde Caisse Personnelle</h3>
+                                <div class="value">${calculateStudentBalance(currentUser.id)}G</div>
                             </div>
                             <div class="stat-box">
                                 <h3>Budgets Actifs</h3>
@@ -931,13 +1152,14 @@ self.addEventListener('fetch', event => {
                     </div>
                     <div class="grid">
                         ${Object.entries(budgets).map(([id, budget]) => `
-                            <div class="budget-card">
+                            <div class="budget-card" onclick="showBudgetDetail('${id}')" style="cursor: pointer;">
                                 <div class="budget-image">${budget.emoji || '💰'}</div>
                                 <div class="budget-content">
                                     <h3>${budget.title}</h3>
                                     <p>${budget.description}</p>
-                                    <div class="amount">Prix: ${budget.amount}G</div>
+                                    <div class="amount">Part par élève: ${budget.amount}G</div>
                                     ${budget.imageUrl ? `<img src="${budget.imageUrl}" style="width: 100%; border-radius: 8px; margin-bottom: 10px;">` : ''}
+                                    <div style="font-size: 12px; color: #1a73e8; font-weight: 600;">👉 Klike pou wè sa ou deja peye</div>
                                 </div>
                             </div>
                         `).join('')}
@@ -945,13 +1167,74 @@ self.addEventListener('fetch', event => {
                 </div>
             `;
 
-            // My Account (Bank)
+            // Caisse Personnelle
+            const balance = calculateStudentBalance(currentUser.id);
+            const myMovements = Object.entries(cashBox).filter(([id, c]) => c.studentId === currentUser.id)
+                .sort((a, b) => (b[1].timestamp || 0) - (a[1].timestamp || 0));
+
             sectionsDiv.innerHTML += `
                 <div class="section">
                     <div class="card">
-                        <h2>🏧 Mon Compte en Banque</h2>
-                        <p style="margin-bottom: 20px;">Accès à votre carte virtuelle AyiPay</p>
-                        <a href="https://ayipay.example.com" target="_blank" class="btn btn-primary">Accéder à AyiPay</a>
+                        <h2>👛 Caisse Personnelle</h2>
+                        <div class="stats">
+                            <div class="stat-box">
+                                <h3>Solde Disponible</h3>
+                                <div class="value">${balance}G</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h3>💸 Demander un Retrait</h3>
+                        <div class="form-group">
+                            <label>Montant (Gourdes)</label>
+                            <input type="number" id="withdrawAmount" placeholder="500">
+                        </div>
+                        <div class="form-group">
+                            <label>Description</label>
+                            <textarea id="withdrawDesc" placeholder="Pourquoi ce retrait?"></textarea>
+                        </div>
+                        <button class="btn btn-primary" onclick="requestWithdrawal()">📤 Envoyer la Demande</button>
+                    </div>
+                    <div class="card">
+                        <h3>Historique</h3>
+                        <table class="table">
+                            <thead>
+                                <tr><th>Type</th><th>Montant</th><th>Date</th><th>Statut</th></tr>
+                            </thead>
+                            <tbody>
+                                ${myMovements.map(([id, m]) => `
+                                    <tr>
+                                        <td>${m.type === 'depot' ? '⬇️ Dépôt' : '⬆️ Retrait'}${m.description ? ' - ' + m.description : ''}</td>
+                                        <td>${m.amount}G</td>
+                                        <td>${m.date}</td>
+                                        <td>${m.type === 'retrait' ? statusLabel(m.status) : '✅ Confirmé'}</td>
+                                    </tr>
+                                `).join('') || '<tr><td colspan="4">Aucun mouvement</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+
+            // Dons
+            sectionsDiv.innerHTML += `
+                <div class="section">
+                    <div class="card">
+                        <h2>🎁 Dons</h2>
+                        ${Object.keys(donCampaigns).length === 0 ? '<p>Aucun don programmé pour le moment.</p>' : ''}
+                        ${Object.entries(donCampaigns).map(([id, camp]) => {
+                            const dateKey = getCurrentPeriodKey(camp);
+                            const paid = !!(donPayments[id] && donPayments[id][dateKey] && donPayments[id][dateKey][currentUser.id]);
+                            const missed = getCampaignPeriods(camp).filter(p => !(donPayments[id] && donPayments[id][p] && donPayments[id][p][currentUser.id]));
+                            return `
+                                <div class="card" style="background: #f8f9fa;">
+                                    <p><strong>Montant:</strong> ${camp.amount}G — <strong>Chaque:</strong> ${camp.intervalDays} jour(s)</p>
+                                    <p><strong>Période actuelle:</strong> ${dateKey}</p>
+                                    <p style="margin-top: 8px;">${paid ? '<span style="color:#28a745; font-weight:600;">✅ Payé</span>' : '<span style="color:#dc3545; font-weight:600;">❌ Pas encore payé</span>'}</p>
+                                    ${missed.length > 0 ? `<p style="color:#dc3545; font-size: 13px; margin-top: 5px;">⚠️ ${missed.length} période(s) impayée(s) — Total: ${missed.length * camp.amount}G</p>` : ''}
+                                </div>
+                            `;
+                        }).join('')}
                     </div>
                 </div>
             `;
@@ -1001,19 +1284,25 @@ self.addEventListener('fetch', event => {
                         <table class="table">
                             <thead>
                                 <tr>
+                                    <th>#</th>
                                     <th>Nom</th>
                                     <th>Clé d'Accès</th>
-                                    <th>Email</th>
+                                    <th>Solde</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                ${Object.entries(students).map(([id, student]) => `
+                                ${Object.entries(students).map(([id, student], index) => `
                                     <tr>
+                                        <td>${index + 1}</td>
                                         <td>${student.name}</td>
                                         <td><strong>${student.key}</strong></td>
-                                        <td>${student.email}</td>
-                                        <td><button class="btn btn-danger" onclick="deleteStudent('${id}')" style="padding: 5px 10px; font-size: 12px;">Supprimer</button></td>
+                                        <td>${calculateStudentBalance(id)}G</td>
+                                        <td>
+                                            <button class="btn btn-success" onclick="showDepositModal('${id}', '${(student.name || '').replace(/'/g, "\\'")}')" style="padding: 5px 10px; font-size: 12px;">💰 Déposer</button>
+                                            <button class="btn btn-primary" onclick="showEditStudentModal('${id}')" style="padding: 5px 10px; font-size: 12px;">✏️ Modifier</button>
+                                            <button class="btn btn-danger" onclick="deleteStudent('${id}')" style="padding: 5px 10px; font-size: 12px;">Supprimer</button>
+                                        </td>
                                     </tr>
                                 `).join('')}
                             </tbody>
@@ -1036,9 +1325,10 @@ self.addEventListener('fetch', event => {
                             <textarea id="budgetDesc" placeholder="Détails du budget"></textarea>
                         </div>
                         <div class="form-group">
-                            <label>Montant par Élève (Gourdes)</label>
-                            <input type="number" id="budgetAmount" placeholder="1500">
+                            <label>Montant Total du Budget (Gourdes)</label>
+                            <input type="number" id="budgetTotalAmount" placeholder="Ex: 45000" oninput="updateBudgetPreview('budgetTotalAmount', 'budgetPreview')">
                         </div>
+                        <div id="budgetPreview" style="font-size: 13px; color: #1a73e8; font-weight: 600; margin-bottom: 15px;"></div>
                         <div class="form-group">
                             <label>Lien Image (URL)</label>
                             <input type="url" id="budgetImage" placeholder="https://...">
@@ -1054,7 +1344,10 @@ self.addEventListener('fetch', event => {
                                     <div class="budget-content">
                                         <h3>${budget.title}</h3>
                                         <p>${budget.description}</p>
-                                        <div class="amount">Prix: ${budget.amount}G</div>
+                                        <div class="amount">Budget total: ${budget.totalAmount || (budget.amount * Object.keys(students).length)}G</div>
+                                        <div class="amount">Part par élève: ${budget.amount}G</div>
+                                        <button class="btn btn-primary" onclick="showEditBudgetModal('${id}')" style="padding: 5px 10px; font-size: 12px;">✏️ Modifier</button>
+                                        <button class="btn btn-secondary" onclick="showBudgetPaymentsModal('${id}')" style="padding: 5px 10px; font-size: 12px;">💵 Paiements</button>
                                         <button class="btn btn-danger" onclick="deleteBudget('${id}')" style="padding: 5px 10px; font-size: 12px;">Supprimer</button>
                                     </div>
                                 </div>
@@ -1065,6 +1358,7 @@ self.addEventListener('fetch', event => {
             `;
 
             // Cash Box Section
+            const pendingWithdrawals = Object.entries(cashBox).filter(([id, c]) => c.type === 'retrait' && c.status === 'pending');
             sectionsDiv.innerHTML += `
                 <div class="section">
                     <div class="card">
@@ -1075,83 +1369,78 @@ self.addEventListener('fetch', event => {
                                 <div class="value">${calculateCashBoxTotal()}G</div>
                             </div>
                             <div class="stat-box">
-                                <h3>Élèves Ayant Payé</h3>
+                                <h3>Élèves Ayant Déposé</h3>
                                 <div class="value">${calculatePaidStudents()}</div>
                             </div>
                         </div>
-                        <div class="form-group">
-                            <label>Enregistrer un Paiement</label>
-                            <select id="paymentStudent">
-                                <option value="">-- Sélectionner un élève --</option>
-                                ${Object.entries(students).map(([id, student]) => `<option value="${id}">${student.name}</option>`).join('')}
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Montant (Gourdes)</label>
-                            <input type="number" id="paymentAmount" placeholder="500">
-                        </div>
-                        <button class="btn btn-success" onclick="recordPayment()">✅ Enregistrer Paiement</button>
-                    </div>
-                </div>
-            `;
-
-            // AyiPay Section
-            sectionsDiv.innerHTML += `
-                <div class="section">
-                    <div class="card">
-                        <h2>💳 Intégration AyiPay</h2>
-                        <div class="form-group">
-                            <label>Lien AyiPay</label>
-                            <input type="url" id="ayipayLink" placeholder="https://ayipay.example.com" value="${cashBox.ayipayLink || ''}">
-                        </div>
-                        <div class="form-group">
-                            <label>Logo/Image AyiPay (URL)</label>
-                            <input type="url" id="ayipayImage" placeholder="https://..." value="${cashBox.ayipayImage || ''}">
-                        </div>
-                        <button class="btn btn-primary" onclick="updateAyiPay()">💾 Mettre à jour AyiPay</button>
-                    </div>
-                </div>
-            `;
-
-            // Donations Section
-            sectionsDiv.innerHTML += `
-                <div class="section">
-                    <div class="card">
-                        <h2>🎁 Gestion des Dons</h2>
-                        <div class="form-group">
-                            <label>Nom du Donateur</label>
-                            <input type="text" id="donorName" placeholder="Nom">
-                        </div>
-                        <div class="form-group">
-                            <label>Montant du Don (Gourdes)</label>
-                            <input type="number" id="donorAmount" placeholder="1000">
-                        </div>
-                        <div class="form-group">
-                            <label>Date du Don</label>
-                            <input type="date" id="donorDate">
-                        </div>
-                        <button class="btn btn-success" onclick="addDonation()">➕ Enregistrer Don</button>
                     </div>
                     <div class="card">
-                        <h3>Historique des Dons</h3>
+                        <h3>⏳ Demandes de Retrait en Attente</h3>
                         <table class="table">
                             <thead>
-                                <tr>
-                                    <th>Donateur</th>
-                                    <th>Montant</th>
-                                    <th>Date</th>
-                                </tr>
+                                <tr><th>Élève</th><th>Montant</th><th>Description</th><th>Date</th><th>Actions</th></tr>
                             </thead>
                             <tbody>
-                                ${Object.entries(donations).map(([id, donation]) => `
+                                ${pendingWithdrawals.map(([id, w]) => `
                                     <tr>
-                                        <td>${donation.name}</td>
-                                        <td>${donation.amount}G</td>
-                                        <td>${donation.date}</td>
+                                        <td>${students[w.studentId] ? students[w.studentId].name : 'Inconnu'}</td>
+                                        <td>${w.amount}G</td>
+                                        <td>${w.description || ''}</td>
+                                        <td>${w.date}</td>
+                                        <td>
+                                            <button class="btn btn-success" onclick="approveWithdrawal('${id}')" style="padding: 5px 10px; font-size: 12px;">✅ Valider</button>
+                                            <button class="btn btn-danger" onclick="rejectWithdrawal('${id}')" style="padding: 5px 10px; font-size: 12px;">❌ Refuser</button>
+                                        </td>
                                     </tr>
-                                `).join('')}
+                                `).join('') || '<tr><td colspan="5">Aucune demande en attente</td></tr>'}
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            `;
+
+            // Dons Section
+            sectionsDiv.innerHTML += `
+                <div class="section">
+                    <div class="card">
+                        <h2>🎁 Programmer un Don</h2>
+                        <div class="form-group">
+                            <label>Montant par Personne (Gourdes)</label>
+                            <input type="number" id="donAmount" placeholder="100">
+                        </div>
+                        <div class="form-group">
+                            <label>Chaque combien de jours?</label>
+                            <input type="number" id="donInterval" placeholder="Ex: 7 pour chaque semaine">
+                        </div>
+                        <button class="btn btn-success" onclick="addDonCampaign()">➕ Programmer</button>
+                    </div>
+                    <div class="card">
+                        <h3>Dons Programmés</h3>
+                        ${Object.keys(donCampaigns).length === 0 ? '<p>Aucun don programmé.</p>' : ''}
+                        ${Object.entries(donCampaigns).map(([id, camp]) => {
+                            const dateKey = getCurrentPeriodKey(camp);
+                            const nextDate = new Date(dateKey);
+                            nextDate.setDate(nextDate.getDate() + (parseInt(camp.intervalDays) || 7));
+                            return `
+                            <div class="card" style="background: #f8f9fa;">
+                                <p><strong>${camp.amount}G</strong> chaque <strong>${camp.intervalDays} jour(s)</strong> — Collecte actuelle: <strong>${dateKey}</strong> — Prochaine: <strong>${nextDate.toISOString().split('T')[0]}</strong></p>
+                                <button class="btn btn-danger" onclick="deleteDonCampaign('${id}')" style="padding: 5px 10px; font-size: 12px; margin-bottom: 10px;">Supprimer ce don</button>
+                                <table class="table">
+                                    <thead><tr><th>Élève</th><th>Payé cette période?</th></tr></thead>
+                                    <tbody>
+                                        ${Object.entries(students).map(([sid, s]) => {
+                                            const paid = !!(donPayments[id] && donPayments[id][dateKey] && donPayments[id][dateKey][sid]);
+                                            return `
+                                            <tr>
+                                                <td>${s.name}</td>
+                                                <td><input type="checkbox" ${paid ? 'checked' : ''} onchange="toggleDonPayment('${id}', '${dateKey}', '${sid}', this.checked)"></td>
+                                            </tr>`;
+                                        }).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                            `;
+                        }).join('')}
                     </div>
                 </div>
             `;
@@ -1159,6 +1448,14 @@ self.addEventListener('fetch', event => {
             // Partners Section
             sectionsDiv.innerHTML += `
                 <div class="section">
+                    <div class="card">
+                        <h2>🔗 Lien du Copyright (Portfolio)</h2>
+                        <div class="form-group">
+                            <label>Lien vers votre portfolio</label>
+                            <input type="url" id="devLinkInput" placeholder="https://..." value="${settings.devLink || ''}">
+                        </div>
+                        <button class="btn btn-primary" onclick="updateDevLink()">💾 Enregistrer</button>
+                    </div>
                     <div class="card">
                         <h2>🤝 Gestion des Partenaires</h2>
                         <div class="form-group">
@@ -1196,9 +1493,10 @@ self.addEventListener('fetch', event => {
                     </div>
                 </div>
             `;
-        }
 
-        // Database Functions
+            ImgLinkConverter.attachInline('budgetImage');
+            ImgLinkConverter.attachInline('partnerImage');
+        }
         function addStudent() {
             const name = document.getElementById('studentName').value;
             const email = document.getElementById('studentEmail').value;
@@ -1228,71 +1526,352 @@ self.addEventListener('fetch', event => {
             }
         }
 
+        function showEditStudentModal(id) {
+            const student = students[id];
+            if (!student) return;
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <span class="modal-close" onclick="this.parentElement.parentElement.remove()">✕</span>
+                    <h2>✏️ Modifier l'Élève</h2>
+                    <div class="form-group">
+                        <label>Nom Complet</label>
+                        <input type="text" id="editStudentName" value="${student.name || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="editStudentEmail" value="${student.email || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label>Clé d'Accès</label>
+                        <input type="text" id="editStudentKey" value="${student.key || ''}" style="text-transform: uppercase;">
+                    </div>
+                    <button class="btn btn-success" onclick="updateStudent('${id}')">💾 Enregistrer</button>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        function updateStudent(id) {
+            const name = document.getElementById('editStudentName').value;
+            const email = document.getElementById('editStudentEmail').value;
+            const key = document.getElementById('editStudentKey').value.toUpperCase().trim();
+
+            if (!name || !key) {
+                alert('Veuillez remplir tous les champs obligatoires');
+                return;
+            }
+
+            db.ref('students/' + id).update({ name, email, key }).then(() => {
+                alert('✅ Élève mis à jour');
+                document.querySelector('.modal.active').remove();
+            });
+        }
+
+        // Budgets
+        function updateBudgetPreview(inputId, previewId) {
+            const total = parseFloat(document.getElementById(inputId).value) || 0;
+            const count = Object.keys(students).length || 1;
+            const per = Math.ceil(total / count);
+            document.getElementById(previewId).textContent = `👉 ${count} élève(s) × ${per}G chacun = ${per * count}G`;
+        }
+
         function addBudget() {
             const title = document.getElementById('budgetTitle').value;
             const desc = document.getElementById('budgetDesc').value;
-            const amount = document.getElementById('budgetAmount').value;
+            const totalAmount = parseFloat(document.getElementById('budgetTotalAmount').value);
             const image = document.getElementById('budgetImage').value;
 
-            if (!title || !amount) {
+            if (!title || !totalAmount) {
                 alert('Veuillez remplir les champs obligatoires');
                 return;
             }
 
-            db.ref('budgets').push({ title, description: desc, amount, imageUrl: image }).then(() => {
+            const count = Object.keys(students).length || 1;
+            const amount = Math.ceil(totalAmount / count);
+
+            db.ref('budgets').push({ title, description: desc, totalAmount, amount, imageUrl: image, timestamp: Date.now() }).then(() => {
                 alert('✅ Budget créé');
                 document.getElementById('budgetTitle').value = '';
                 document.getElementById('budgetDesc').value = '';
-                document.getElementById('budgetAmount').value = '';
+                document.getElementById('budgetTotalAmount').value = '';
                 document.getElementById('budgetImage').value = '';
+                document.getElementById('budgetPreview').textContent = '';
+            });
+        }
+
+        function showEditBudgetModal(id) {
+            const budget = budgets[id];
+            if (!budget) return;
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <span class="modal-close" onclick="this.parentElement.parentElement.remove()">✕</span>
+                    <h2>✏️ Modifier le Budget</h2>
+                    <div class="form-group">
+                        <label>Titre du Budget</label>
+                        <input type="text" id="editBudgetTitle" value="${budget.title || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label>Description</label>
+                        <textarea id="editBudgetDesc">${budget.description || ''}</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Montant Total du Budget (Gourdes)</label>
+                        <input type="number" id="editBudgetTotalAmount" value="${budget.totalAmount || ''}" oninput="updateBudgetPreview('editBudgetTotalAmount', 'editBudgetPreview')">
+                    </div>
+                    <div id="editBudgetPreview" style="font-size: 13px; color: #1a73e8; font-weight: 600; margin-bottom: 15px;"></div>
+                    <div class="form-group">
+                        <label>Lien Image (URL)</label>
+                        <input type="url" id="editBudgetImage" value="${budget.imageUrl || ''}">
+                    </div>
+                    <button class="btn btn-success" onclick="updateBudget('${id}')">💾 Enregistrer</button>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            updateBudgetPreview('editBudgetTotalAmount', 'editBudgetPreview');
+            ImgLinkConverter.attachInline('editBudgetImage');
+        }
+
+        function updateBudget(id) {
+            const title = document.getElementById('editBudgetTitle').value;
+            const desc = document.getElementById('editBudgetDesc').value;
+            const totalAmount = parseFloat(document.getElementById('editBudgetTotalAmount').value);
+            const image = document.getElementById('editBudgetImage').value;
+
+            if (!title || !totalAmount) {
+                alert('Veuillez remplir les champs obligatoires');
+                return;
+            }
+
+            const count = Object.keys(students).length || 1;
+            const amount = Math.ceil(totalAmount / count);
+
+            db.ref('budgets/' + id).update({ title, description: desc, totalAmount, amount, imageUrl: image }).then(() => {
+                alert('✅ Budget mis à jour');
+                document.querySelector('.modal.active').remove();
             });
         }
 
         function deleteBudget(id) {
             if (confirm('Êtes-vous sûr?')) {
                 db.ref('budgets/' + id).remove();
+                db.ref('budgetPayments/' + id).remove();
             }
         }
 
-        function recordPayment() {
-            const studentId = document.getElementById('paymentStudent').value;
-            const amount = document.getElementById('paymentAmount').value;
+        function showBudgetPaymentsModal(budgetId) {
+            const budget = budgets[budgetId];
+            if (!budget) return;
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <span class="modal-close" onclick="this.parentElement.parentElement.remove()">✕</span>
+                    <h2>💵 Paiements — ${budget.title}</h2>
+                    <table class="table">
+                        <thead><tr><th>Élève</th><th>Déjà payé</th><th>Ajouter</th></tr></thead>
+                        <tbody>
+                            ${Object.entries(students).map(([sid, s]) => {
+                                const paid = (budgetPayments[budgetId] && budgetPayments[budgetId][sid]) || 0;
+                                return `
+                                <tr>
+                                    <td>${s.name}</td>
+                                    <td>${paid}G / ${budget.amount}G</td>
+                                    <td>
+                                        <input type="number" id="pay_${sid}" placeholder="Montant" style="width: 90px; display:inline-block;">
+                                        <button class="btn btn-success" onclick="addBudgetPayment('${budgetId}', '${sid}')" style="padding: 5px 10px; font-size: 12px;">➕</button>
+                                    </td>
+                                </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
 
-            if (!studentId || !amount) {
+        function addBudgetPayment(budgetId, studentId) {
+            const input = document.getElementById('pay_' + studentId);
+            const amount = parseFloat(input.value);
+            if (!amount || amount <= 0) {
+                alert('Veuillez entrer un montant valide');
+                return;
+            }
+            const ref = db.ref('budgetPayments/' + budgetId + '/' + studentId);
+            ref.once('value').then(snap => {
+                const current = snap.val() || 0;
+                ref.set(current + amount).then(() => {
+                    document.querySelector('.modal.active').remove();
+                    showBudgetPaymentsModal(budgetId);
+                });
+            });
+        }
+
+        function showBudgetDetail(budgetId) {
+            const budget = budgets[budgetId];
+            if (!budget) return;
+            const paid = (budgetPayments[budgetId] && budgetPayments[budgetId][currentUser.id]) || 0;
+            const reste = Math.max(0, budget.amount - paid);
+            alert(`${budget.title}\n\nMontant demandé: ${budget.amount}G\nDéjà payé: ${paid}G\nReste à payer: ${reste}G`);
+        }
+
+        // Caisse Personnelle
+        function showDepositModal(studentId, studentName) {
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <span class="modal-close" onclick="this.parentElement.parentElement.remove()">✕</span>
+                    <h2>💰 Dépôt — ${studentName}</h2>
+                    <div class="form-group">
+                        <label>Montant (Gourdes)</label>
+                        <input type="number" id="depositAmount" placeholder="500">
+                    </div>
+                    <button class="btn btn-success" onclick="makeDeposit('${studentId}')">✅ Déposer</button>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        function makeDeposit(studentId) {
+            const amount = parseFloat(document.getElementById('depositAmount').value);
+            if (!amount || amount <= 0) {
+                alert('Veuillez entrer un montant valide');
+                return;
+            }
+            db.ref('cashBox').push({
+                studentId,
+                type: 'depot',
+                amount,
+                date: new Date().toLocaleDateString(),
+                timestamp: Date.now()
+            }).then(() => {
+                alert('✅ Dépôt enregistré');
+                document.querySelector('.modal.active').remove();
+            });
+        }
+
+        function requestWithdrawal() {
+            const amount = parseFloat(document.getElementById('withdrawAmount').value);
+            const description = document.getElementById('withdrawDesc').value;
+
+            if (!amount || amount <= 0 || !description) {
                 alert('Veuillez remplir tous les champs');
                 return;
             }
 
-            db.ref('cashBox').push({ studentId, amount: parseInt(amount), date: new Date().toLocaleDateString() }).then(() => {
-                alert('✅ Paiement enregistré');
-                document.getElementById('paymentAmount').value = '';
+            db.ref('cashBox').push({
+                studentId: currentUser.id,
+                type: 'retrait',
+                amount,
+                description,
+                date: new Date().toLocaleDateString(),
+                timestamp: Date.now(),
+                status: 'pending'
+            }).then(() => {
+                alert('✅ Demande de retrait envoyée. En attente de validation.');
+                document.getElementById('withdrawAmount').value = '';
+                document.getElementById('withdrawDesc').value = '';
             });
         }
 
-        function updateAyiPay() {
-            const link = document.getElementById('ayipayLink').value;
-            const image = document.getElementById('ayipayImage').value;
-
-            db.ref('cashBox').update({ ayipayLink: link, ayipayImage: image }).then(() => {
-                alert('✅ AyiPay mis à jour');
-            });
+        function approveWithdrawal(id) {
+            db.ref('cashBox/' + id).update({ status: 'approuve' });
         }
 
-        function addDonation() {
-            const name = document.getElementById('donorName').value;
-            const amount = document.getElementById('donorAmount').value;
-            const date = document.getElementById('donorDate').value;
+        function rejectWithdrawal(id) {
+            db.ref('cashBox/' + id).update({ status: 'refuse' });
+        }
 
-            if (!name || !amount || !date) {
+        function statusLabel(status) {
+            if (status === 'approuve') return '✅ Validé';
+            if (status === 'refuse') return '❌ Refusé';
+            return '⏳ En attente';
+        }
+
+        // Dons
+        function getCampaignPeriods(camp) {
+            const periods = [];
+            const start = new Date(camp.startDate || camp.createdAt || Date.now());
+            start.setHours(0, 0, 0, 0);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const interval = parseInt(camp.intervalDays) || 7;
+            let cursor = new Date(start);
+            let safety = 0;
+            while (cursor <= today && safety < 1000) {
+                periods.push(cursor.toISOString().split('T')[0]);
+                cursor.setDate(cursor.getDate() + interval);
+                safety++;
+            }
+            if (periods.length === 0) {
+                periods.push(start.toISOString().split('T')[0]);
+            }
+            return periods;
+        }
+
+        function getCurrentPeriodKey(camp) {
+            const periods = getCampaignPeriods(camp);
+            return periods[periods.length - 1];
+        }
+
+        function getUnpaidDonsForStudent(studentId) {
+            const unpaid = [];
+            Object.entries(donCampaigns).forEach(([id, camp]) => {
+                const periods = getCampaignPeriods(camp);
+                const missed = periods.filter(p => !(donPayments[id] && donPayments[id][p] && donPayments[id][p][studentId]));
+                if (missed.length > 0) {
+                    unpaid.push({ id, amount: camp.amount, intervalDays: camp.intervalDays, count: missed.length, total: missed.length * camp.amount });
+                }
+            });
+            return unpaid;
+        }
+
+        function addDonCampaign() {
+            const amount = parseFloat(document.getElementById('donAmount').value);
+            const intervalDays = parseInt(document.getElementById('donInterval').value);
+
+            if (!amount || !intervalDays) {
                 alert('Veuillez remplir tous les champs');
                 return;
             }
 
-            db.ref('donations').push({ name, amount: parseInt(amount), date }).then(() => {
-                alert('✅ Don enregistré');
-                document.getElementById('donorName').value = '';
-                document.getElementById('donorAmount').value = '';
-                document.getElementById('donorDate').value = '';
+            db.ref('donCampaigns').push({
+                amount,
+                intervalDays,
+                startDate: new Date().toISOString().split('T')[0],
+                createdAt: Date.now()
+            }).then(() => {
+                alert('✅ Don programmé');
+                document.getElementById('donAmount').value = '';
+                document.getElementById('donInterval').value = '';
+            });
+        }
+
+        function deleteDonCampaign(id) {
+            if (confirm('Êtes-vous sûr?')) {
+                db.ref('donCampaigns/' + id).remove();
+                db.ref('donPayments/' + id).remove();
+            }
+        }
+
+        function toggleDonPayment(campaignId, dateKey, studentId, checked) {
+            const ref = db.ref('donPayments/' + campaignId + '/' + dateKey + '/' + studentId);
+            if (checked) {
+                ref.set(true);
+            } else {
+                ref.remove();
+            }
+        }
+
+        // Partners
+        function updateDevLink() {
+            const link = document.getElementById('devLinkInput').value;
+            db.ref('settings').update({ devLink: link }).then(() => {
+                alert('✅ Lien mis à jour');
             });
         }
 
@@ -1323,25 +1902,31 @@ self.addEventListener('fetch', event => {
         }
 
         // Helper Functions
-        function calculateStudentTotal() {
-            return Object.values(cashBox).reduce((sum, payment) => {
-                return payment.studentId === currentUser.id ? sum + parseInt(payment.amount || 0) : sum;
+        function calculateStudentBalance(studentId) {
+            return Object.values(cashBox).reduce((sum, m) => {
+                if (m.studentId !== studentId) return sum;
+                if (m.type === 'depot') return sum + parseFloat(m.amount || 0);
+                if (m.type === 'retrait' && m.status === 'approuve') return sum - parseFloat(m.amount || 0);
+                return sum;
             }, 0);
         }
 
         function calculateCashBoxTotal() {
-            return Object.values(cashBox).reduce((sum, payment) => {
-                return sum + parseInt(payment.amount || 0);
+            return Object.values(cashBox).reduce((sum, m) => {
+                if (m.type === 'depot') return sum + parseFloat(m.amount || 0);
+                if (m.type === 'retrait' && m.status === 'approuve') return sum - parseFloat(m.amount || 0);
+                return sum;
             }, 0);
         }
 
         function calculatePaidStudents() {
-            return new Set(Object.values(cashBox).map(p => p.studentId)).size;
+            return new Set(Object.values(cashBox).filter(m => m.type === 'depot').map(m => m.studentId)).size;
         }
 
         function updateUI() {
             if (currentUser) {
                 renderSections();
+                renderNotifBanner();
             }
         }
     </script>
