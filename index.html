@@ -237,6 +237,9 @@
             width: 100%;
             border-collapse: collapse;
             margin-bottom: 20px;
+            display: block;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
         }
 
         .table th,
@@ -244,6 +247,7 @@
             padding: 12px;
             text-align: left;
             border-bottom: 1px solid #ddd;
+            white-space: nowrap;
         }
 
         .table th {
@@ -469,6 +473,21 @@
             .nav-tabs button {
                 padding: 10px 15px;
                 font-size: 12px;
+            }
+
+            .app-container {
+                padding: 10px;
+            }
+
+            .table th,
+            .table td {
+                padding: 8px;
+                font-size: 13px;
+            }
+
+            .btn {
+                padding: 8px 12px;
+                font-size: 13px;
             }
         }
 
@@ -1039,7 +1058,7 @@ self.addEventListener('fetch', event => {
             const navTabs = document.getElementById('navTabs');
             navTabs.innerHTML = '';
             const sections = isAdmin ? 
-                ['Élèves', 'Budgets', 'Caisse', 'Dons', 'Partenaires'] :
+                ['Élèves', 'Budgets', 'Caisse', 'Dons', 'Partenaires', 'Paramètres'] :
                 ['Tableau de Bord', 'Caisse Personnelle', 'Dons', 'Partenaires'];
             currentSectionLabels = sections;
 
@@ -1109,6 +1128,33 @@ self.addEventListener('fetch', event => {
             const link = document.getElementById('footerLink');
             if (link) {
                 link.href = settings.devLink || '#';
+            }
+            applySettings();
+        }
+
+        function applySettings() {
+            document.body.style.zoom = (settings.zoomLevel || 100) + '%';
+            document.body.style.color = settings.textColor || '#333333';
+            document.body.style.background = settings.bgColor ?
+                settings.bgColor :
+                'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+        }
+
+        function updateSystemSettings() {
+            const zoomLevel = parseInt(document.getElementById('zoomLevelInput').value);
+            const textColor = document.getElementById('textColorInput').value;
+            const bgColor = document.getElementById('bgColorInput').value;
+
+            db.ref('settings').update({ zoomLevel, textColor, bgColor }).then(() => {
+                alert('✅ Paramètres enregistrés');
+            });
+        }
+
+        function resetSystemSettings() {
+            if (confirm('Réinitialiser le zoom et les couleurs par défaut?')) {
+                db.ref('settings').update({ zoomLevel: 100, textColor: '#333333', bgColor: null }).then(() => {
+                    alert('✅ Paramètres réinitialisés');
+                });
             }
         }
 
@@ -1494,9 +1540,34 @@ self.addEventListener('fetch', event => {
                 </div>
             `;
 
+            // Paramètres Section
+            sectionsDiv.innerHTML += `
+                <div class="section">
+                    <div class="card">
+                        <h2>⚙️ Paramètres du Système</h2>
+                        <div class="form-group">
+                            <label>🔍 Niveau de Zoom (${settings.zoomLevel || 100}%)</label>
+                            <input type="range" id="zoomLevelInput" min="70" max="130" step="5" value="${settings.zoomLevel || 100}" oninput="document.getElementById('zoomLevelLabel').textContent = this.value + '%'" style="width: 100%;">
+                            <div id="zoomLevelLabel" style="text-align: center; font-weight: 600; color: #1a73e8;">${settings.zoomLevel || 100}%</div>
+                        </div>
+                        <div class="form-group">
+                            <label>🎨 Couleur du Texte</label>
+                            <input type="color" id="textColorInput" value="${settings.textColor || '#333333'}" style="width: 100%; height: 45px; border: 2px solid #e0e0e0; border-radius: 8px;">
+                        </div>
+                        <div class="form-group">
+                            <label>🖼️ Couleur de Fond</label>
+                            <input type="color" id="bgColorInput" value="${settings.bgColor || '#667eea'}" style="width: 100%; height: 45px; border: 2px solid #e0e0e0; border-radius: 8px;">
+                        </div>
+                        <button class="btn btn-success" onclick="updateSystemSettings()">💾 Enregistrer</button>
+                        <button class="btn btn-secondary" onclick="resetSystemSettings()" style="margin-left: 10px;">↺ Réinitialiser</button>
+                    </div>
+                </div>
+            `;
+
             ImgLinkConverter.attachInline('budgetImage');
             ImgLinkConverter.attachInline('partnerImage');
         }
+
         function addStudent() {
             const name = document.getElementById('studentName').value;
             const email = document.getElementById('studentEmail').value;
