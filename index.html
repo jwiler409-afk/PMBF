@@ -505,6 +505,124 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+
+        /* Roulette Wheel */
+        .wheel-wrap {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px 0;
+        }
+
+        .wheel-outer {
+            position: relative;
+            width: 280px;
+            height: 280px;
+            border-radius: 50%;
+            background: radial-gradient(circle, #cfd4da 0%, #8b93a1 60%, #4a5261 100%);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+            padding: 14px;
+        }
+
+        .wheel-leds {
+            position: absolute;
+            inset: 0;
+        }
+
+        .wheel-led {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: radial-gradient(circle, #FFD700, #b8860b);
+            box-shadow: 0 0 6px 2px rgba(255, 215, 0, 0.8);
+            animation: ledBlink 1.4s infinite alternate;
+        }
+
+        @keyframes ledBlink {
+            0% { opacity: 0.4; }
+            100% { opacity: 1; }
+        }
+
+        .wheel-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 3px solid #0B1E3D;
+            transition: transform 4s cubic-bezier(0.17, 0.67, 0.12, 0.99);
+        }
+
+        .wheel-slice-icon {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 42px;
+            height: 42px;
+            margin: -21px 0 0 -21px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            text-align: center;
+        }
+
+        .wheel-slice-icon img {
+            width: 32px;
+            height: 32px;
+            object-fit: contain;
+        }
+
+        .wheel-pointer {
+            position: absolute;
+            top: -14px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 14px solid transparent;
+            border-right: 14px solid transparent;
+            border-top: 26px solid #b8bec7;
+            filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5));
+            z-index: 5;
+        }
+
+        .wheel-center-btn {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 78px;
+            height: 78px;
+            border-radius: 50%;
+            background: radial-gradient(circle, #FFE066 0%, #FFD700 60%, #b8860b 100%);
+            border: 3px solid #0B1E3D;
+            color: white;
+            font-weight: 800;
+            font-size: 14px;
+            letter-spacing: 1px;
+            cursor: pointer;
+            z-index: 6;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+        }
+
+        .wheel-center-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .wheel-result-card {
+            text-align: center;
+            padding: 20px;
+        }
+
+        .wheel-result-card img {
+            width: 80px;
+            height: 80px;
+            object-fit: contain;
+            margin-bottom: 10px;
+        }
     </style>
 </head>
 <body>
@@ -811,6 +929,9 @@ self.addEventListener('fetch', event => {
         let donPayments = {};
         let partners = {};
         let settings = {};
+        let wheelSlices = {};
+        let wheelSettings = {};
+        let wheelSpins = {};
         let adminPassword = '1a2b3c'; // Stockée localement
 
         // Gestion du bouton "Retour" du téléphone
@@ -870,6 +991,21 @@ self.addEventListener('fetch', event => {
             db.ref('settings').on('value', snapshot => {
                 settings = snapshot.val() || {};
                 renderFooter();
+            });
+
+            db.ref('wheelSlices').on('value', snapshot => {
+                wheelSlices = snapshot.val() || {};
+                updateUI();
+            });
+
+            db.ref('wheelSettings').on('value', snapshot => {
+                wheelSettings = snapshot.val() || {};
+                updateUI();
+            });
+
+            db.ref('wheelSpins').on('value', snapshot => {
+                wheelSpins = snapshot.val() || {};
+                updateUI();
             });
         }
 
@@ -1058,13 +1194,13 @@ self.addEventListener('fetch', event => {
             const navTabs = document.getElementById('navTabs');
             navTabs.innerHTML = '';
             const sections = isAdmin ? 
-                ['Élèves', 'Budgets', 'Caisse', 'Dons', 'Partenaires', 'Paramètres'] :
-                ['Tableau de Bord', 'Caisse Personnelle', 'Dons', 'Partenaires'];
+                ['Élèves', 'Budgets', 'Caisse', 'Dons', 'Roulette', 'Partenaires', 'Paramètres'] :
+                ['Tableau de Bord', 'Caisse Personnelle', 'Dons', 'Roulette', 'Partenaires'];
             currentSectionLabels = sections;
 
             sections.forEach((section, index) => {
                 const btn = document.createElement('button');
-                const isNew = (section === 'Budgets' && countNew('budgets') > 0) || (section === 'Dons' && countNew('dons') > 0);
+                const isNew = (section === 'Budgets' && countNew('budgets') > 0) || (section === 'Dons' && countNew('dons') > 0) || (section === 'Roulette' && countNew('roulette') > 0);
                 btn.innerHTML = section + (isNew ? ' <span style="background:#dc3545; color:white; border-radius:50%; padding:2px 6px; font-size:10px; margin-left:4px;">•</span>' : '');
                 btn.className = index === 0 ? 'active' : '';
                 btn.onclick = () => switchSection(index, section);
@@ -1105,6 +1241,13 @@ self.addEventListener('fetch', event => {
             }
             if (type === 'dons') {
                 return Object.values(donCampaigns).filter(c => (c.createdAt || 0) > lastSeen).length;
+            }
+            if (type === 'roulette') {
+                if (isAdmin || !currentUser) return 0;
+                const info = getWheelPeriodInfo();
+                if (!info || !info.isActive) return 0;
+                const mySpin = getMySpinForPeriod(currentUser.id, info.periodKey);
+                return mySpin ? 0 : 1;
             }
             return 0;
         }
@@ -1281,6 +1424,24 @@ self.addEventListener('fetch', event => {
                                 </div>
                             `;
                         }).join('')}
+                    </div>
+                </div>
+            `;
+
+            // Roulette
+            const wheelInfo = getWheelPeriodInfo();
+            let wheelContent = '';
+            if (!wheelInfo || !wheelInfo.isActive) {
+                wheelContent = '<p style="text-align:center; color:#666; padding: 30px 0;">🎡 Pa gen roulette ki aktif kounye a. Tann pwochèn siprann!</p>';
+            } else {
+                const mySpin = getMySpinForPeriod(currentUser.id, wheelInfo.periodKey);
+                wheelContent = mySpin ? renderWheelResult(mySpin) : renderWheelWidget();
+            }
+            sectionsDiv.innerHTML += `
+                <div class="section">
+                    <div class="card">
+                        <h2>🎡 Roulette Sirprann</h2>
+                        ${wheelContent}
                     </div>
                 </div>
             `;
@@ -1491,6 +1652,86 @@ self.addEventListener('fetch', event => {
                 </div>
             `;
 
+            // Roulette Section
+            const wInfo = getWheelPeriodInfo();
+            const recentSpins = Object.entries(wheelSpins).sort((a, b) => (b[1].timestamp || 0) - (a[1].timestamp || 0)).slice(0, 30);
+            sectionsDiv.innerHTML += `
+                <div class="section">
+                    <div class="card">
+                        <h2>🎡 Programmation Roulette</h2>
+                        <p style="margin-bottom: 10px;">Statut: ${wheelSettings.active && wInfo && wInfo.isActive ?
+                            `<span style="color:#28a745; font-weight:700;">✅ Active</span> (jiska ${new Date(wInfo.periodEnd).toLocaleString()})` :
+                            wheelSettings.active ? '<span style="color:#856404; font-weight:700;">⏳ En attente du prochain cycle</span>' :
+                            '<span style="color:#dc3545; font-weight:700;">⏹️ Arrêtée</span>'}</p>
+                        <div class="form-group">
+                            <label>Chak konbyen jou</label>
+                            <input type="number" id="wheelIntervalDays" placeholder="7" value="${wheelSettings.intervalDays || ''}">
+                        </div>
+                        <div class="form-group">
+                            <label>Nan ki lè</label>
+                            <input type="time" id="wheelTimeOfDay" value="${wheelSettings.timeOfDay || '08:00'}">
+                        </div>
+                        <button class="btn btn-primary" onclick="updateWheelSettings()">💾 Enregistrer</button>
+                        <button class="btn btn-success" onclick="startWheelNow()">▶️ Démarrer Maintenant</button>
+                        <button class="btn btn-danger" onclick="stopWheelNow()">⏹️ Arrêter</button>
+                    </div>
+                    <div class="card">
+                        <h3>➕ Ajouter une Tranche</h3>
+                        <div class="form-group">
+                            <label>Type</label>
+                            <select id="wheelSliceType" onchange="toggleWheelSliceFields('wheelSlice')">
+                                <option value="photo">📷 Foto (prim)</option>
+                                <option value="parole">💬 Ti Pawòl</option>
+                                <option value="nulle">❌ Nulle</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="wheelSliceImageGroup">
+                            <label>Foto (Lien Image)</label>
+                            <input type="url" id="wheelSliceImage" placeholder="https://...">
+                        </div>
+                        <div class="form-group" id="wheelSliceTextGroup" style="display: none;">
+                            <label>Ti Pawòl</label>
+                            <textarea id="wheelSliceText" placeholder="Ex: Bèl travay! Kontinye eseye."></textarea>
+                        </div>
+                        <button class="btn btn-success" onclick="addWheelSlice()">➕ Ajouter</button>
+                    </div>
+                    <div class="card">
+                        <h3>Tranches Actuelles (${Object.keys(wheelSlices).length})</h3>
+                        <table class="table">
+                            <thead><tr><th>Type</th><th>Contenu</th><th>Actions</th></tr></thead>
+                            <tbody>
+                                ${Object.entries(wheelSlices).map(([id, s]) => `
+                                    <tr>
+                                        <td>${s.type === 'photo' ? '📷 Foto' : s.type === 'parole' ? '💬 Pawòl' : '❌ Nulle'}</td>
+                                        <td>${s.type === 'photo' ? `<img src="${s.imageUrl}" style="width:36px; height:36px; object-fit:cover; border-radius:6px;">` : s.type === 'parole' ? (s.text || '') : '—'}</td>
+                                        <td>
+                                            <button class="btn btn-primary" onclick="showEditWheelSliceModal('${id}')" style="padding: 5px 10px; font-size: 12px;">✏️ Modifier</button>
+                                            <button class="btn btn-danger" onclick="deleteWheelSlice('${id}')" style="padding: 5px 10px; font-size: 12px;">Supprimer</button>
+                                        </td>
+                                    </tr>
+                                `).join('') || '<tr><td colspan="3">Aucune tranche</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="card">
+                        <h3>🎯 Résultats Récents</h3>
+                        <table class="table">
+                            <thead><tr><th>Élève</th><th>Résultat</th><th>Date</th><th>Bay li</th></tr></thead>
+                            <tbody>
+                                ${recentSpins.map(([id, s]) => `
+                                    <tr>
+                                        <td>${students[s.studentId] ? students[s.studentId].name : 'Inconnu'}</td>
+                                        <td>${s.type === 'photo' ? `<img src="${s.imageUrl}" style="width:30px; height:30px; object-fit:cover; border-radius:6px; vertical-align:middle;"> Prim` : s.type === 'parole' ? '💬 ' + s.text : '❌ Anyen'}</td>
+                                        <td>${new Date(s.timestamp).toLocaleString()}</td>
+                                        <td>${s.type === 'photo' ? `<input type="checkbox" ${s.given ? 'checked' : ''} onchange="toggleWheelGiven('${id}', this.checked)">` : '—'}</td>
+                                    </tr>
+                                `).join('') || '<tr><td colspan="4">Aucun résultat</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+
             // Partners Section
             sectionsDiv.innerHTML += `
                 <div class="section">
@@ -1566,6 +1807,7 @@ self.addEventListener('fetch', event => {
 
             ImgLinkConverter.attachInline('budgetImage');
             ImgLinkConverter.attachInline('partnerImage');
+            ImgLinkConverter.attachInline('wheelSliceImage');
         }
 
         function addStudent() {
@@ -1992,6 +2234,263 @@ self.addEventListener('fetch', event => {
 
         function calculatePaidStudents() {
             return new Set(Object.values(cashBox).filter(m => m.type === 'depot').map(m => m.studentId)).size;
+        }
+
+        // ===== Roulette / Wheel =====
+        function getWheelPeriodInfo() {
+            const ws = wheelSettings;
+            if (!ws || !ws.active || !ws.anchorAt || !ws.intervalDays) return null;
+            const intervalMs = ws.intervalDays * 24 * 60 * 60 * 1000;
+            const now = Date.now();
+            if (now < ws.anchorAt) return null;
+            const elapsed = now - ws.anchorAt;
+            const periodIndex = Math.floor(elapsed / intervalMs);
+            const periodStart = ws.anchorAt + periodIndex * intervalMs;
+            const periodEnd = periodStart + intervalMs;
+            return {
+                periodKey: 'p' + periodIndex,
+                periodStart,
+                periodEnd,
+                isActive: now < periodEnd
+            };
+        }
+
+        function getMySpinForPeriod(studentId, periodKey) {
+            const entry = Object.entries(wheelSpins).find(([id, s]) => s.studentId === studentId && s.periodKey === periodKey);
+            return entry ? { id: entry[0], ...entry[1] } : null;
+        }
+
+        function renderWheelWidget() {
+            const slices = Object.entries(wheelSlices);
+            const n = slices.length;
+            const anglePer = 360 / n;
+            const radius = 92;
+
+            const leds = Array.from({ length: 20 }).map((_, i) => {
+                const angle = (360 / 20) * i;
+                const rad = (angle * Math.PI) / 180;
+                const x = 140 + 130 * Math.sin(rad) - 4;
+                const y = 140 - 130 * Math.cos(rad) - 4;
+                return `<div class="wheel-led" style="left:${x}px; top:${y}px; animation-delay:${(i % 5) * 0.2}s;"></div>`;
+            }).join('');
+
+            const gradientStops = slices.map(([id, s], i) => {
+                const color = i % 2 === 0 ? '#0B1E3D' : '#FFD700';
+                return `${color} ${i * anglePer}deg ${(i + 1) * anglePer}deg`;
+            }).join(', ');
+
+            const icons = slices.map(([id, s], i) => {
+                const mid = i * anglePer + anglePer / 2;
+                const icon = s.type === 'photo' && s.imageUrl ? `<img src="${s.imageUrl}" alt="">` :
+                    s.type === 'parole' ? '💬' : '❌';
+                return `
+                    <div class="wheel-slice-icon" style="transform: rotate(${mid}deg) translate(0, -${radius}px) rotate(${-mid}deg);">
+                        ${icon}
+                    </div>
+                `;
+            }).join('');
+
+            return `
+                <div class="wheel-wrap">
+                    <div class="wheel-outer">
+                        <div class="wheel-leds">${leds}</div>
+                        <div class="wheel-pointer"></div>
+                        <div class="wheel-inner" id="wheelInner" style="background: conic-gradient(${gradientStops});">
+                            ${icons}
+                        </div>
+                        <button class="wheel-center-btn" id="wheelSpinBtn" onclick="spinWheel()">TOURNEZ</button>
+                    </div>
+                    <p style="margin-top: 15px; color: #666; font-size: 13px;">Klike sou TOURNEZ pou eseye chans ou! 🎉</p>
+                </div>
+            `;
+        }
+
+        function spinWheel() {
+            const btn = document.getElementById('wheelSpinBtn');
+            const wheelInner = document.getElementById('wheelInner');
+            if (!btn || !wheelInner || btn.disabled) return;
+
+            const slices = Object.entries(wheelSlices);
+            if (slices.length === 0) {
+                alert('Pa gen tranch configuré pou roulette a.');
+                return;
+            }
+
+            btn.disabled = true;
+            const idx = Math.floor(Math.random() * slices.length);
+            const [sliceId, slice] = slices[idx];
+            const anglePer = 360 / slices.length;
+            const targetMid = idx * anglePer + anglePer / 2;
+            const fullSpins = 6;
+            const finalRotation = fullSpins * 360 + (360 - targetMid);
+
+            wheelInner.style.transform = `rotate(${finalRotation}deg)`;
+
+            setTimeout(() => {
+                recordSpinResult(sliceId, slice);
+            }, 4100);
+        }
+
+        function recordSpinResult(sliceId, slice) {
+            const info = getWheelPeriodInfo();
+            if (!info) return;
+
+            db.ref('wheelSpins').push({
+                studentId: currentUser.id,
+                periodKey: info.periodKey,
+                sliceId,
+                type: slice.type,
+                imageUrl: slice.imageUrl || '',
+                text: slice.text || '',
+                timestamp: Date.now()
+            });
+        }
+
+        function renderWheelResult(spin) {
+            let content = '';
+            if (spin.type === 'photo') {
+                content = `
+                    <img src="${spin.imageUrl}" alt="">
+                    <h2>🎉 Ou genyen!</h2>
+                    <p style="color: #666; margin-top: 8px;">Ale kot administrasyon pou resevwa kado ou a.</p>
+                    ${spin.given ? '<p style="color:#28a745; font-weight:600; margin-top: 8px;">✅ Deja remèt ou</p>' : ''}
+                `;
+            } else if (spin.type === 'parole') {
+                content = `
+                    <h2>💬</h2>
+                    <p style="font-style: italic; font-size: 17px; color: #333; margin-top: 8px;">"${spin.text}"</p>
+                `;
+            } else {
+                content = `
+                    <h2>😅</h2>
+                    <p style="color: #666; margin-top: 8px;">Pa gen chans fwa sa a. Eseye ankò pwochen fwa!</p>
+                `;
+            }
+            return `<div class="wheel-result-card">${content}</div>`;
+        }
+
+        function toggleWheelGiven(id, checked) {
+            db.ref('wheelSpins/' + id).update({ given: checked });
+        }
+
+        function toggleWheelSliceFields(prefix) {
+            const type = document.getElementById(prefix + 'Type').value;
+            const imgGroup = document.getElementById(prefix + 'ImageGroup');
+            const textGroup = document.getElementById(prefix + 'TextGroup');
+            if (imgGroup) imgGroup.style.display = type === 'photo' ? 'block' : 'none';
+            if (textGroup) textGroup.style.display = type === 'parole' ? 'block' : 'none';
+        }
+
+        function addWheelSlice() {
+            const type = document.getElementById('wheelSliceType').value;
+            const imageUrl = document.getElementById('wheelSliceImage').value;
+            const text = document.getElementById('wheelSliceText').value;
+
+            if (type === 'photo' && !imageUrl) {
+                alert('Mete yon foto pou prim sa a');
+                return;
+            }
+            if (type === 'parole' && !text) {
+                alert('Ekri ti pawòl la');
+                return;
+            }
+
+            db.ref('wheelSlices').push({
+                type,
+                imageUrl: type === 'photo' ? imageUrl : '',
+                text: type === 'parole' ? text : ''
+            }).then(() => {
+                alert('✅ Tranche ajoutée');
+                document.getElementById('wheelSliceImage').value = '';
+                document.getElementById('wheelSliceText').value = '';
+            });
+        }
+
+        function deleteWheelSlice(id) {
+            if (confirm('Êtes-vous sûr?')) {
+                db.ref('wheelSlices/' + id).remove();
+            }
+        }
+
+        function showEditWheelSliceModal(id) {
+            const slice = wheelSlices[id];
+            if (!slice) return;
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <span class="modal-close" onclick="this.parentElement.parentElement.remove()">✕</span>
+                    <h2>✏️ Modifier la Tranche</h2>
+                    <div class="form-group">
+                        <label>Type</label>
+                        <select id="editWheelType" onchange="toggleWheelSliceFields('editWheel')">
+                            <option value="photo" ${slice.type === 'photo' ? 'selected' : ''}>📷 Foto (prim)</option>
+                            <option value="parole" ${slice.type === 'parole' ? 'selected' : ''}>💬 Ti Pawòl</option>
+                            <option value="nulle" ${slice.type === 'nulle' ? 'selected' : ''}>❌ Nulle</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="editWheelImageGroup" style="display: ${slice.type === 'photo' ? 'block' : 'none'};">
+                        <label>Foto (Lien Image)</label>
+                        <input type="url" id="editWheelImage" value="${slice.imageUrl || ''}">
+                    </div>
+                    <div class="form-group" id="editWheelTextGroup" style="display: ${slice.type === 'parole' ? 'block' : 'none'};">
+                        <label>Ti Pawòl</label>
+                        <textarea id="editWheelText">${slice.text || ''}</textarea>
+                    </div>
+                    <button class="btn btn-success" onclick="updateWheelSlice('${id}')">💾 Enregistrer</button>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            ImgLinkConverter.attachInline('editWheelImage');
+        }
+
+        function updateWheelSlice(id) {
+            const type = document.getElementById('editWheelType').value;
+            const imageUrl = document.getElementById('editWheelImage').value;
+            const text = document.getElementById('editWheelText').value;
+
+            db.ref('wheelSlices/' + id).update({
+                type,
+                imageUrl: type === 'photo' ? imageUrl : '',
+                text: type === 'parole' ? text : ''
+            }).then(() => {
+                alert('✅ Tranche mise à jour');
+                document.querySelector('.modal.active').remove();
+            });
+        }
+
+        function updateWheelSettings() {
+            const intervalDays = parseFloat(document.getElementById('wheelIntervalDays').value);
+            const timeOfDay = document.getElementById('wheelTimeOfDay').value;
+
+            if (!intervalDays || !timeOfDay) {
+                alert('Veuillez remplir tous les champs');
+                return;
+            }
+
+            db.ref('wheelSettings').update({ intervalDays, timeOfDay }).then(() => {
+                alert('✅ Programmation enregistrée');
+            });
+        }
+
+        function startWheelNow() {
+            const intervalDays = parseFloat(document.getElementById('wheelIntervalDays').value) || wheelSettings.intervalDays || 7;
+            const timeOfDay = document.getElementById('wheelTimeOfDay').value || wheelSettings.timeOfDay || '08:00';
+            const [hh, mm] = timeOfDay.split(':').map(Number);
+            const now = new Date();
+            const anchor = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh, mm, 0, 0);
+
+            db.ref('wheelSettings').update({
+                intervalDays, timeOfDay,
+                active: true,
+                anchorAt: anchor.getTime()
+            }).then(() => {
+                alert('✅ Roulette démarrée!');
+            });
+        }
+
+        function stopWheelNow() {
+            db.ref('wheelSettings').update({ active: false });
         }
 
         function updateUI() {
