@@ -1882,6 +1882,10 @@ self.addEventListener('fetch', event => {
                             <label>Konbyen fwa yon moun ka vire pa peryòd</label>
                             <input type="number" id="newWheelMaxSpins" placeholder="1" value="1">
                         </div>
+                        <div class="form-group">
+                            <label>🎯 Chans pou genyen yon prim: <span id="newWheelDifficultyLabel">30% (Mwayen)</span></label>
+                            <input type="range" id="newWheelDifficulty" min="0" max="100" step="5" value="30" oninput="updateDifficultyLabel('newWheelDifficulty', 'newWheelDifficultyLabel')">
+                        </div>
                         <button class="btn btn-success" onclick="createWheelCampaign()">➕ Créer</button>
                     </div>
                     <div class="card">
@@ -1897,7 +1901,7 @@ self.addEventListener('fetch', event => {
                                 <div class="card" style="background: #f8f9fa;">
                                     <h4>${camp.name}</h4>
                                     <p style="font-size: 13px;">Statut: ${statusHtml}</p>
-                                    <p style="font-size: 13px; color: #666;">Chak ${camp.intervalDays || '?'} jou nan ${camp.timeOfDay || '?'} — Maks ${camp.maxSpins || 1} vire/moun — ${Object.keys(wheelSlices[campId] || {}).length} tranch</p>
+                                    <p style="font-size: 13px; color: #666;">Chak ${camp.intervalDays || '?'} jou nan ${camp.timeOfDay || '?'} — Maks ${camp.maxSpins || 1} vire/moun — ${Object.keys(wheelSlices[campId] || {}).length} tranch — 🎯 ${camp.winChance != null ? camp.winChance : 30}% (${difficultyText(camp.winChance != null ? camp.winChance : 30)})</p>
                                     <button class="btn btn-primary" onclick="showWheelCampaignModal('${campId}')" style="padding: 5px 10px; font-size: 12px;">⚙️ Gérer</button>
                                     <button class="btn btn-success" onclick="startWheelCampaign('${campId}')" style="padding: 5px 10px; font-size: 12px;">▶️ Démarrer</button>
                                     <button class="btn btn-secondary" onclick="stopWheelCampaign('${campId}')" style="padding: 5px 10px; font-size: 12px;">⏹️ Arrêter</button>
@@ -2581,6 +2585,39 @@ self.addEventListener('fetch', event => {
             `;
         }
 
+        function difficultyText(chance) {
+            if (chance <= 20) return 'Trè Difisil';
+            if (chance <= 40) return 'Difisil';
+            if (chance <= 60) return 'Mwayen';
+            if (chance <= 80) return 'Fasil';
+            return 'Trè Fasil';
+        }
+
+        function updateDifficultyLabel(inputId, labelId) {
+            const val = parseInt(document.getElementById(inputId).value);
+            document.getElementById(labelId).textContent = `${val}% (${difficultyText(val)})`;
+        }
+
+        function pickWinningIndex(slices, winChance) {
+            const photoIdx = [];
+            const otherIdx = [];
+            slices.forEach(([id, s], i) => {
+                if (s.type === 'photo') photoIdx.push(i);
+                else otherIdx.push(i);
+            });
+
+            const roll = Math.random() * 100;
+            let pool;
+            if (roll < winChance && photoIdx.length > 0) {
+                pool = photoIdx;
+            } else if (otherIdx.length > 0) {
+                pool = otherIdx;
+            } else {
+                pool = photoIdx;
+            }
+            return pool[Math.floor(Math.random() * pool.length)];
+        }
+
         function spinWheel(campId) {
             const btn = document.getElementById('wheelSpinBtn_' + campId);
             const wheelInner = document.getElementById('wheelInner_' + campId);
@@ -2592,8 +2629,11 @@ self.addEventListener('fetch', event => {
                 return;
             }
 
+            const camp = wheelCampaigns[campId] || {};
+            const winChance = camp.winChance != null ? camp.winChance : 30;
+
             btn.disabled = true;
-            const idx = Math.floor(Math.random() * slices.length);
+            const idx = pickWinningIndex(slices, winChance);
             const [sliceId, slice] = slices[idx];
             const anglePer = 360 / slices.length;
             const targetMid = idx * anglePer + anglePer / 2;
@@ -2664,6 +2704,7 @@ self.addEventListener('fetch', event => {
             const intervalDays = parseFloat(document.getElementById('newWheelInterval').value);
             const timeOfDay = document.getElementById('newWheelTime').value;
             const maxSpins = parseInt(document.getElementById('newWheelMaxSpins').value) || 1;
+            const winChance = parseInt(document.getElementById('newWheelDifficulty').value) || 30;
 
             if (!name || !intervalDays || !timeOfDay) {
                 alert('Veuillez remplir tous les champs');
@@ -2671,7 +2712,7 @@ self.addEventListener('fetch', event => {
             }
 
             db.ref('wheelCampaigns').push({
-                name, intervalDays, timeOfDay, maxSpins, active: false
+                name, intervalDays, timeOfDay, maxSpins, winChance, active: false
             }).then(() => {
                 alert('✅ Roulette créée. Ajoutez des tranches avec "⚙️ Gérer".');
                 document.getElementById('newWheelName').value = '';
@@ -2727,6 +2768,10 @@ self.addEventListener('fetch', event => {
                     <div class="form-group">
                         <label>Konbyen fwa yon moun ka vire pa peryòd</label>
                         <input type="number" id="campMaxSpins_${campId}" value="${camp.maxSpins || 1}">
+                    </div>
+                    <div class="form-group">
+                        <label>🎯 Chans pou genyen yon prim: <span id="campDifficultyLabel_${campId}">${camp.winChance != null ? camp.winChance : 30}% (${difficultyText(camp.winChance != null ? camp.winChance : 30)})</span></label>
+                        <input type="range" id="campDifficulty_${campId}" min="0" max="100" step="5" value="${camp.winChance != null ? camp.winChance : 30}" oninput="updateDifficultyLabel('campDifficulty_${campId}', 'campDifficultyLabel_${campId}')">
                     </div>
                     <button class="btn btn-primary" onclick="updateWheelCampaign('${campId}')">💾 Enregistrer</button>
                     <hr style="margin: 15px 0;">
@@ -2786,13 +2831,14 @@ self.addEventListener('fetch', event => {
             const intervalDays = parseFloat(document.getElementById('campInterval_' + campId).value);
             const timeOfDay = document.getElementById('campTime_' + campId).value;
             const maxSpins = parseInt(document.getElementById('campMaxSpins_' + campId).value) || 1;
+            const winChance = parseInt(document.getElementById('campDifficulty_' + campId).value) || 30;
 
             if (!intervalDays || !timeOfDay) {
                 alert('Veuillez remplir tous les champs');
                 return;
             }
 
-            db.ref('wheelCampaigns/' + campId).update({ intervalDays, timeOfDay, maxSpins }).then(() => {
+            db.ref('wheelCampaigns/' + campId).update({ intervalDays, timeOfDay, maxSpins, winChance }).then(() => {
                 alert('✅ Roulette mise à jour');
             });
         }
