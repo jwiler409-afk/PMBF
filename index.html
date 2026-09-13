@@ -623,6 +623,130 @@
             object-fit: contain;
             margin-bottom: 10px;
         }
+
+        /* Chat */
+        .chat-card {
+            display: flex;
+            flex-direction: column;
+            height: 500px;
+        }
+
+        .chat-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #eee;
+            margin-bottom: 10px;
+        }
+
+        .chat-header-name {
+            font-weight: 700;
+            font-size: 16px;
+            color: #0B1E3D;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 6px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .chat-bubble {
+            max-width: 75%;
+            padding: 10px 14px;
+            border-radius: 16px;
+            font-size: 14px;
+            line-height: 1.4;
+            word-wrap: break-word;
+        }
+
+        .chat-bubble-me {
+            align-self: flex-end;
+            background: linear-gradient(135deg, #1a73e8, #4a90e2);
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .chat-bubble-them {
+            align-self: flex-start;
+            background: #f1f3f5;
+            color: #222;
+            border-bottom-left-radius: 4px;
+        }
+
+        .chat-bubble-sender {
+            font-size: 11px;
+            font-weight: 700;
+            opacity: 0.75;
+            margin-bottom: 2px;
+        }
+
+        .chat-bubble-time {
+            font-size: 10px;
+            opacity: 0.7;
+            margin-top: 4px;
+            text-align: right;
+        }
+
+        .chat-input-row {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .chat-input-row input {
+            flex: 1;
+            padding: 10px 14px;
+            border-radius: 20px;
+            border: 1px solid #ddd;
+        }
+
+        .chat-input-row button {
+            border-radius: 50%;
+            width: 42px;
+            height: 42px;
+            padding: 0;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+
+        .chat-friend-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 4px;
+            border-bottom: 1px solid #f0f0f0;
+            cursor: pointer;
+        }
+
+        .chat-friend-row:hover {
+            background: #f8f9fa;
+        }
+
+        .chat-avatar {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #0B1E3D, #1a73e8);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .chat-request-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 4px;
+        }
     </style>
 </head>
 <body>
@@ -655,6 +779,9 @@
                     <button class="btn btn-secondary" onclick="logout()" style="margin-top: 10px; padding: 8px 12px; font-size: 12px;">↪️ Déconnexion</button>
                 </div>
             </div>
+
+            <!-- Announcement Banner -->
+            <div id="announcementBanner"></div>
 
             <!-- Notification Banner -->
             <div id="notifBanner"></div>
@@ -929,9 +1056,14 @@ self.addEventListener('fetch', event => {
         let donPayments = {};
         let partners = {};
         let settings = {};
+        let wheelCampaigns = {};
         let wheelSlices = {};
-        let wheelSettings = {};
         let wheelSpins = {};
+        let birthdayMessages = {};
+        let friendRequests = {};
+        let chats = {};
+        let activeChatWith = null;
+        let activeSectionIndex = 0;
         let adminPassword = '1a2b3c'; // Stockée localement
 
         // Gestion du bouton "Retour" du téléphone
@@ -993,18 +1125,32 @@ self.addEventListener('fetch', event => {
                 renderFooter();
             });
 
+            db.ref('wheelCampaigns').on('value', snapshot => {
+                wheelCampaigns = snapshot.val() || {};
+                updateUI();
+            });
+
             db.ref('wheelSlices').on('value', snapshot => {
                 wheelSlices = snapshot.val() || {};
                 updateUI();
             });
 
-            db.ref('wheelSettings').on('value', snapshot => {
-                wheelSettings = snapshot.val() || {};
+            db.ref('wheelSpins').on('value', snapshot => {
+                wheelSpins = snapshot.val() || {};
                 updateUI();
             });
 
-            db.ref('wheelSpins').on('value', snapshot => {
-                wheelSpins = snapshot.val() || {};
+            db.ref('birthdayMessages').on('value', snapshot => {
+                birthdayMessages = snapshot.val() || {};
+            });
+
+            db.ref('friendRequests').on('value', snapshot => {
+                friendRequests = snapshot.val() || {};
+                updateUI();
+            });
+
+            db.ref('chats').on('value', snapshot => {
+                chats = snapshot.val() || {};
                 updateUI();
             });
         }
@@ -1134,6 +1280,13 @@ self.addEventListener('fetch', event => {
             }
             
             renderTabs();
+
+            const savedIndex = parseInt(localStorage.getItem('pmbf_activeTab_' + (isAdmin ? 'admin' : 'student')));
+            if (!isNaN(savedIndex) && currentSectionLabels[savedIndex]) {
+                switchSection(savedIndex, currentSectionLabels[savedIndex]);
+            }
+
+            setTimeout(maybeShowBirthdayPopup, 600);
         }
 
         function showChangePassword() {
@@ -1194,8 +1347,8 @@ self.addEventListener('fetch', event => {
             const navTabs = document.getElementById('navTabs');
             navTabs.innerHTML = '';
             const sections = isAdmin ? 
-                ['Élèves', 'Budgets', 'Caisse', 'Dons', 'Roulette', 'Partenaires', 'Paramètres'] :
-                ['Tableau de Bord', 'Caisse Personnelle', 'Dons', 'Roulette', 'Partenaires'];
+                ['Élèves', 'Budgets', 'Caisse', 'Dons', 'Roulette', 'Partenaires', 'Chat', 'Paramètres'] :
+                ['Tableau de Bord', 'Caisse Personnelle', 'Dons', 'Roulette', 'Partenaires', 'Chat'];
             currentSectionLabels = sections;
 
             sections.forEach((section, index) => {
@@ -1212,6 +1365,8 @@ self.addEventListener('fetch', event => {
         }
 
         function switchSection(index, label) {
+            activeSectionIndex = index;
+            localStorage.setItem('pmbf_activeTab_' + (isAdmin ? 'admin' : 'student'), index);
             document.querySelectorAll('.nav-tabs button').forEach((btn, i) => {
                 btn.classList.toggle('active', i === index);
             });
@@ -1223,6 +1378,12 @@ self.addEventListener('fetch', event => {
             const btn = document.querySelectorAll('.nav-tabs button')[index];
             if (btn) btn.innerHTML = label;
             renderNotifBanner();
+        }
+
+        function applyActiveSection() {
+            document.querySelectorAll('.section').forEach((sec, i) => {
+                sec.classList.toggle('active', i === activeSectionIndex);
+            });
         }
 
         // Notifications
@@ -1244,10 +1405,12 @@ self.addEventListener('fetch', event => {
             }
             if (type === 'roulette') {
                 if (isAdmin || !currentUser) return 0;
-                const info = getWheelPeriodInfo();
-                if (!info || !info.isActive) return 0;
-                const mySpin = getMySpinForPeriod(currentUser.id, info.periodKey);
-                return mySpin ? 0 : 1;
+                return Object.entries(wheelCampaigns).filter(([campId, camp]) => {
+                    const info = getWheelPeriodInfo(camp);
+                    if (!info || !info.isActive) return false;
+                    const mySpins = getMySpinsForPeriod(currentUser.id, campId, info.periodKey);
+                    return mySpins.length < (camp.maxSpins || 1);
+                }).length;
             }
             return 0;
         }
@@ -1273,6 +1436,19 @@ self.addEventListener('fetch', event => {
                 link.href = settings.devLink || '#';
             }
             applySettings();
+            renderAnnouncementBanner();
+        }
+
+        function renderAnnouncementBanner() {
+            const banner = document.getElementById('announcementBanner');
+            if (!banner) return;
+            const ann = settings.announcement;
+            const isValid = ann && ann.active && ann.text && (!ann.expiresAt || Date.now() < ann.expiresAt);
+            if (isValid) {
+                banner.innerHTML = `<div class="alert alert-warning" style="white-space: pre-wrap;">📢 ${ann.text}</div>`;
+            } else {
+                banner.innerHTML = '';
+            }
         }
 
         function applySettings() {
@@ -1301,6 +1477,19 @@ self.addEventListener('fetch', event => {
             }
         }
 
+        function updateAnnouncement() {
+            const text = document.getElementById('announcementText').value;
+            const durationDays = parseFloat(document.getElementById('announcementDuration').value);
+            const active = document.getElementById('announcementActive').checked;
+            const expiresAt = durationDays ? Date.now() + durationDays * 24 * 60 * 60 * 1000 : null;
+
+            db.ref('settings').update({
+                announcement: { text, active, expiresAt }
+            }).then(() => {
+                alert('✅ Nòt anrejistre');
+            });
+        }
+
         // Render Sections Based on Role
         function renderSections() {
             const sectionsDiv = document.getElementById('sections');
@@ -1316,6 +1505,7 @@ self.addEventListener('fetch', event => {
         function renderStudentSections() {
             const sectionsDiv = document.getElementById('sections');
             const unpaidDons = getUnpaidDonsForStudent(currentUser.id);
+            const me = students[currentUser.id] || currentUser;
 
             // Dashboard
             sectionsDiv.innerHTML += `
@@ -1326,6 +1516,21 @@ self.addEventListener('fetch', event => {
                             ${unpaidDons.map(d => `${d.count} fwa (${d.total}G)`).join(', ')}
                         </div>
                     ` : ''}
+                    <div class="card">
+                        <h2>👤 Mon Profil</h2>
+                        <div style="text-align: center; margin-bottom: 15px;">
+                            <img src="${me.photoUrl || ''}" onerror="this.style.display='none'" style="width: 90px; height: 90px; object-fit: cover; border-radius: 50%; border: 3px solid #1a73e8; ${me.photoUrl ? '' : 'display:none;'}">
+                        </div>
+                        <div class="form-group">
+                            <label>📷 Ma Photo de Profil</label>
+                            <input type="url" id="myPhotoUrl" value="${me.photoUrl || ''}" placeholder="https://...">
+                        </div>
+                        <div class="form-group">
+                            <label>🎂 Ma Date d'Anniversaire</label>
+                            <input type="date" id="myBirthday" value="${me.birthday || ''}">
+                        </div>
+                        <button class="btn btn-success" onclick="updateMyProfile()">💾 Enregistrer</button>
+                    </div>
                     <div class="card">
                         <h2>📊 Tableau de Bord</h2>
                         <div class="stats">
@@ -1429,19 +1634,11 @@ self.addEventListener('fetch', event => {
             `;
 
             // Roulette
-            const wheelInfo = getWheelPeriodInfo();
-            let wheelContent = '';
-            if (!wheelInfo || !wheelInfo.isActive) {
-                wheelContent = '<p style="text-align:center; color:#666; padding: 30px 0;">🎡 Pa gen roulette ki aktif kounye a. Tann pwochèn siprann!</p>';
-            } else {
-                const mySpin = getMySpinForPeriod(currentUser.id, wheelInfo.periodKey);
-                wheelContent = mySpin ? renderWheelResult(mySpin) : renderWheelWidget();
-            }
             sectionsDiv.innerHTML += `
                 <div class="section">
                     <div class="card">
                         <h2>🎡 Roulette Sirprann</h2>
-                        ${wheelContent}
+                        ${renderWheelSectionForStudent()}
                     </div>
                 </div>
             `;
@@ -1466,6 +1663,17 @@ self.addEventListener('fetch', event => {
                     </div>
                 </div>
             `;
+
+            // Chat
+            sectionsDiv.innerHTML += `
+                <div class="section">
+                    <div class="card">
+                        ${renderChatSection()}
+                    </div>
+                </div>
+            `;
+
+            ImgLinkConverter.attachInline('myPhotoUrl');
         }
 
         function renderAdminSections() {
@@ -1653,79 +1861,65 @@ self.addEventListener('fetch', event => {
             `;
 
             // Roulette Section
-            const wInfo = getWheelPeriodInfo();
             const recentSpins = Object.entries(wheelSpins).sort((a, b) => (b[1].timestamp || 0) - (a[1].timestamp || 0)).slice(0, 30);
             sectionsDiv.innerHTML += `
                 <div class="section">
                     <div class="card">
-                        <h2>🎡 Programmation Roulette</h2>
-                        <p style="margin-bottom: 10px;">Statut: ${wheelSettings.active && wInfo && wInfo.isActive ?
-                            `<span style="color:#28a745; font-weight:700;">✅ Active</span> (jiska ${new Date(wInfo.periodEnd).toLocaleString()})` :
-                            wheelSettings.active ? '<span style="color:#856404; font-weight:700;">⏳ En attente du prochain cycle</span>' :
-                            '<span style="color:#dc3545; font-weight:700;">⏹️ Arrêtée</span>'}</p>
+                        <h2>➕ Nouvelle Roulette</h2>
+                        <div class="form-group">
+                            <label>Nom de la Roulette</label>
+                            <input type="text" id="newWheelName" placeholder="Ex: Roulette du Vendredi">
+                        </div>
                         <div class="form-group">
                             <label>Chak konbyen jou</label>
-                            <input type="number" id="wheelIntervalDays" placeholder="7" value="${wheelSettings.intervalDays || ''}">
+                            <input type="number" id="newWheelInterval" placeholder="7">
                         </div>
                         <div class="form-group">
                             <label>Nan ki lè</label>
-                            <input type="time" id="wheelTimeOfDay" value="${wheelSettings.timeOfDay || '08:00'}">
+                            <input type="time" id="newWheelTime" value="08:00">
                         </div>
-                        <button class="btn btn-primary" onclick="updateWheelSettings()">💾 Enregistrer</button>
-                        <button class="btn btn-success" onclick="startWheelNow()">▶️ Démarrer Maintenant</button>
-                        <button class="btn btn-danger" onclick="stopWheelNow()">⏹️ Arrêter</button>
-                    </div>
-                    <div class="card">
-                        <h3>➕ Ajouter une Tranche</h3>
                         <div class="form-group">
-                            <label>Type</label>
-                            <select id="wheelSliceType" onchange="toggleWheelSliceFields('wheelSlice')">
-                                <option value="photo">📷 Foto (prim)</option>
-                                <option value="parole">💬 Ti Pawòl</option>
-                                <option value="nulle">❌ Nulle</option>
-                            </select>
+                            <label>Konbyen fwa yon moun ka vire pa peryòd</label>
+                            <input type="number" id="newWheelMaxSpins" placeholder="1" value="1">
                         </div>
-                        <div class="form-group" id="wheelSliceImageGroup">
-                            <label>Foto (Lien Image)</label>
-                            <input type="url" id="wheelSliceImage" placeholder="https://...">
-                        </div>
-                        <div class="form-group" id="wheelSliceTextGroup" style="display: none;">
-                            <label>Ti Pawòl</label>
-                            <textarea id="wheelSliceText" placeholder="Ex: Bèl travay! Kontinye eseye."></textarea>
-                        </div>
-                        <button class="btn btn-success" onclick="addWheelSlice()">➕ Ajouter</button>
+                        <button class="btn btn-success" onclick="createWheelCampaign()">➕ Créer</button>
                     </div>
                     <div class="card">
-                        <h3>Tranches Actuelles (${Object.keys(wheelSlices).length})</h3>
-                        <table class="table">
-                            <thead><tr><th>Type</th><th>Contenu</th><th>Actions</th></tr></thead>
-                            <tbody>
-                                ${Object.entries(wheelSlices).map(([id, s]) => `
-                                    <tr>
-                                        <td>${s.type === 'photo' ? '📷 Foto' : s.type === 'parole' ? '💬 Pawòl' : '❌ Nulle'}</td>
-                                        <td>${s.type === 'photo' ? `<img src="${s.imageUrl}" style="width:36px; height:36px; object-fit:cover; border-radius:6px;">` : s.type === 'parole' ? (s.text || '') : '—'}</td>
-                                        <td>
-                                            <button class="btn btn-primary" onclick="showEditWheelSliceModal('${id}')" style="padding: 5px 10px; font-size: 12px;">✏️ Modifier</button>
-                                            <button class="btn btn-danger" onclick="deleteWheelSlice('${id}')" style="padding: 5px 10px; font-size: 12px;">Supprimer</button>
-                                        </td>
-                                    </tr>
-                                `).join('') || '<tr><td colspan="3">Aucune tranche</td></tr>'}
-                            </tbody>
-                        </table>
+                        <h3>🎡 Roulettes (${Object.keys(wheelCampaigns).length})</h3>
+                        ${Object.keys(wheelCampaigns).length === 0 ? '<p>Aucune roulette créée.</p>' : ''}
+                        ${Object.entries(wheelCampaigns).map(([campId, camp]) => {
+                            const info = getWheelPeriodInfo(camp);
+                            const statusHtml = camp.active && info && info.isActive ?
+                                `<span style="color:#28a745; font-weight:700;">✅ Active</span> (jiska ${new Date(info.periodEnd).toLocaleString()})` :
+                                camp.active ? '<span style="color:#856404; font-weight:700;">⏳ En attente du prochain cycle</span>' :
+                                '<span style="color:#dc3545; font-weight:700;">⏹️ Arrêtée</span>';
+                            return `
+                                <div class="card" style="background: #f8f9fa;">
+                                    <h4>${camp.name}</h4>
+                                    <p style="font-size: 13px;">Statut: ${statusHtml}</p>
+                                    <p style="font-size: 13px; color: #666;">Chak ${camp.intervalDays || '?'} jou nan ${camp.timeOfDay || '?'} — Maks ${camp.maxSpins || 1} vire/moun — ${Object.keys(wheelSlices[campId] || {}).length} tranch</p>
+                                    <button class="btn btn-primary" onclick="showWheelCampaignModal('${campId}')" style="padding: 5px 10px; font-size: 12px;">⚙️ Gérer</button>
+                                    <button class="btn btn-success" onclick="startWheelCampaign('${campId}')" style="padding: 5px 10px; font-size: 12px;">▶️ Démarrer</button>
+                                    <button class="btn btn-secondary" onclick="stopWheelCampaign('${campId}')" style="padding: 5px 10px; font-size: 12px;">⏹️ Arrêter</button>
+                                    <button class="btn btn-danger" onclick="deleteWheelCampaign('${campId}')" style="padding: 5px 10px; font-size: 12px;">Supprimer</button>
+                                </div>
+                            `;
+                        }).join('')}
                     </div>
                     <div class="card">
                         <h3>🎯 Résultats Récents</h3>
                         <table class="table">
-                            <thead><tr><th>Élève</th><th>Résultat</th><th>Date</th><th>Bay li</th></tr></thead>
+                            <thead><tr><th>Élève</th><th>Roulette</th><th>Résultat</th><th>Date</th><th>Bay li</th></tr></thead>
                             <tbody>
                                 ${recentSpins.map(([id, s]) => `
                                     <tr>
                                         <td>${students[s.studentId] ? students[s.studentId].name : 'Inconnu'}</td>
+                                        <td>${wheelCampaigns[s.campId] ? wheelCampaigns[s.campId].name : '—'}</td>
                                         <td>${s.type === 'photo' ? `<img src="${s.imageUrl}" style="width:30px; height:30px; object-fit:cover; border-radius:6px; vertical-align:middle;"> Prim` : s.type === 'parole' ? '💬 ' + s.text : '❌ Anyen'}</td>
                                         <td>${new Date(s.timestamp).toLocaleString()}</td>
                                         <td>${s.type === 'photo' ? `<input type="checkbox" ${s.given ? 'checked' : ''} onchange="toggleWheelGiven('${id}', this.checked)">` : '—'}</td>
                                     </tr>
-                                `).join('') || '<tr><td colspan="4">Aucun résultat</td></tr>'}
+                                `).join('') || '<tr><td colspan="5">Aucun résultat</td></tr>'}
                             </tbody>
                         </table>
                     </div>
@@ -1781,6 +1975,15 @@ self.addEventListener('fetch', event => {
                 </div>
             `;
 
+            // Chat
+            sectionsDiv.innerHTML += `
+                <div class="section">
+                    <div class="card">
+                        ${renderChatSection()}
+                    </div>
+                </div>
+            `;
+
             // Paramètres Section
             sectionsDiv.innerHTML += `
                 <div class="section">
@@ -1802,12 +2005,29 @@ self.addEventListener('fetch', event => {
                         <button class="btn btn-success" onclick="updateSystemSettings()">💾 Enregistrer</button>
                         <button class="btn btn-secondary" onclick="resetSystemSettings()" style="margin-left: 10px;">↺ Réinitialiser</button>
                     </div>
+                    <div class="card">
+                        <h2>📢 Note pour Tout le Monde</h2>
+                        <div class="form-group">
+                            <label>Message</label>
+                            <textarea id="announcementText" placeholder="Ekri yon ti nòt pou tout moun wè...">${(settings.announcement && settings.announcement.text) || ''}</textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Dire (jou) — kite l vid pou tout tan</label>
+                            <input type="number" id="announcementDuration" placeholder="Ex: 3">
+                        </div>
+                        <div class="form-group">
+                            <label style="display:flex; align-items:center; gap:8px;">
+                                <input type="checkbox" id="announcementActive" ${settings.announcement && settings.announcement.active ? 'checked' : ''} style="width:auto;">
+                                Aktive nòt la
+                            </label>
+                        </div>
+                        <button class="btn btn-success" onclick="updateAnnouncement()">💾 Enregistrer</button>
+                    </div>
                 </div>
             `;
 
             ImgLinkConverter.attachInline('budgetImage');
             ImgLinkConverter.attachInline('partnerImage');
-            ImgLinkConverter.attachInline('wheelSliceImage');
         }
 
         function addStudent() {
@@ -1860,25 +2080,50 @@ self.addEventListener('fetch', event => {
                         <label>Clé d'Accès</label>
                         <input type="text" id="editStudentKey" value="${student.key || ''}" style="text-transform: uppercase;">
                     </div>
+                    <div class="form-group">
+                        <label>🎂 Date d'Anniversaire</label>
+                        <input type="date" id="editStudentBirthday" value="${student.birthday || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label>📷 Lien Photo</label>
+                        <input type="url" id="editStudentPhoto" value="${student.photoUrl || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label>💬 Ti Mo / Description</label>
+                        <textarea id="editStudentBio" placeholder="Kèk ti bèl mo sou li...">${student.bio || ''}</textarea>
+                    </div>
                     <button class="btn btn-success" onclick="updateStudent('${id}')">💾 Enregistrer</button>
                 </div>
             `;
             document.body.appendChild(modal);
+            ImgLinkConverter.attachInline('editStudentPhoto');
         }
 
         function updateStudent(id) {
             const name = document.getElementById('editStudentName').value;
             const email = document.getElementById('editStudentEmail').value;
             const key = document.getElementById('editStudentKey').value.toUpperCase().trim();
+            const birthday = document.getElementById('editStudentBirthday').value;
+            const photoUrl = document.getElementById('editStudentPhoto').value;
+            const bio = document.getElementById('editStudentBio').value;
 
             if (!name || !key) {
                 alert('Veuillez remplir tous les champs obligatoires');
                 return;
             }
 
-            db.ref('students/' + id).update({ name, email, key }).then(() => {
+            db.ref('students/' + id).update({ name, email, key, birthday, photoUrl, bio }).then(() => {
                 alert('✅ Élève mis à jour');
                 document.querySelector('.modal.active').remove();
+            });
+        }
+
+        function updateMyProfile() {
+            const birthday = document.getElementById('myBirthday').value;
+            const photoUrl = document.getElementById('myPhotoUrl').value;
+
+            db.ref('students/' + currentUser.id).update({ birthday, photoUrl }).then(() => {
+                alert('✅ Profil mis à jour');
             });
         }
 
@@ -2237,15 +2482,14 @@ self.addEventListener('fetch', event => {
         }
 
         // ===== Roulette / Wheel =====
-        function getWheelPeriodInfo() {
-            const ws = wheelSettings;
-            if (!ws || !ws.active || !ws.anchorAt || !ws.intervalDays) return null;
-            const intervalMs = ws.intervalDays * 24 * 60 * 60 * 1000;
+        function getWheelPeriodInfo(camp) {
+            if (!camp || !camp.active || !camp.anchorAt || !camp.intervalDays) return null;
+            const intervalMs = camp.intervalDays * 24 * 60 * 60 * 1000;
             const now = Date.now();
-            if (now < ws.anchorAt) return null;
-            const elapsed = now - ws.anchorAt;
+            if (now < camp.anchorAt) return null;
+            const elapsed = now - camp.anchorAt;
             const periodIndex = Math.floor(elapsed / intervalMs);
-            const periodStart = ws.anchorAt + periodIndex * intervalMs;
+            const periodStart = camp.anchorAt + periodIndex * intervalMs;
             const periodEnd = periodStart + intervalMs;
             return {
                 periodKey: 'p' + periodIndex,
@@ -2255,13 +2499,45 @@ self.addEventListener('fetch', event => {
             };
         }
 
-        function getMySpinForPeriod(studentId, periodKey) {
-            const entry = Object.entries(wheelSpins).find(([id, s]) => s.studentId === studentId && s.periodKey === periodKey);
-            return entry ? { id: entry[0], ...entry[1] } : null;
+        function getMySpinsForPeriod(studentId, campId, periodKey) {
+            return Object.entries(wheelSpins)
+                .filter(([id, s]) => s.studentId === studentId && s.campId === campId && s.periodKey === periodKey)
+                .map(([id, s]) => ({ id, ...s }));
         }
 
-        function renderWheelWidget() {
-            const slices = Object.entries(wheelSlices);
+        function renderWheelSectionForStudent() {
+            const activeCamps = Object.entries(wheelCampaigns).filter(([campId, camp]) => {
+                const info = getWheelPeriodInfo(camp);
+                return info && info.isActive;
+            });
+
+            if (activeCamps.length === 0) {
+                return '<p style="text-align:center; color:#666; padding: 30px 0;">🎡 Pa gen roulette ki aktif kounye a. Tann pwochèn siprann!</p>';
+            }
+
+            return activeCamps.map(([campId, camp]) => {
+                const info = getWheelPeriodInfo(camp);
+                const mySpins = getMySpinsForPeriod(currentUser.id, campId, info.periodKey);
+                const maxSpins = camp.maxSpins || 1;
+                const remaining = Math.max(0, maxSpins - mySpins.length);
+                const body = remaining > 0 ?
+                    renderWheelWidget(campId, wheelSlices[campId] || {}) :
+                    mySpins.map(s => renderWheelResult(s)).join('<hr>');
+                return `
+                    <div class="card" style="background: #f8f9fa; margin-bottom: 15px;">
+                        <h3>${camp.name}</h3>
+                        <p style="font-size: 13px; color: #666;">Vire ki rete: ${remaining}/${maxSpins}</p>
+                        ${body}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderWheelWidget(campId, slicesObj) {
+            const slices = Object.entries(slicesObj);
+            if (slices.length === 0) {
+                return '<p style="color:#999; text-align:center;">Pa gen tranch configuré.</p>';
+            }
             const n = slices.length;
             const anglePer = 360 / n;
             const radius = 92;
@@ -2295,24 +2571,24 @@ self.addEventListener('fetch', event => {
                     <div class="wheel-outer">
                         <div class="wheel-leds">${leds}</div>
                         <div class="wheel-pointer"></div>
-                        <div class="wheel-inner" id="wheelInner" style="background: conic-gradient(${gradientStops});">
+                        <div class="wheel-inner" id="wheelInner_${campId}" style="background: conic-gradient(${gradientStops});">
                             ${icons}
                         </div>
-                        <button class="wheel-center-btn" id="wheelSpinBtn" onclick="spinWheel()">TOURNEZ</button>
+                        <button class="wheel-center-btn" id="wheelSpinBtn_${campId}" onclick="spinWheel('${campId}')">TOURNEZ</button>
                     </div>
                     <p style="margin-top: 15px; color: #666; font-size: 13px;">Klike sou TOURNEZ pou eseye chans ou! 🎉</p>
                 </div>
             `;
         }
 
-        function spinWheel() {
-            const btn = document.getElementById('wheelSpinBtn');
-            const wheelInner = document.getElementById('wheelInner');
+        function spinWheel(campId) {
+            const btn = document.getElementById('wheelSpinBtn_' + campId);
+            const wheelInner = document.getElementById('wheelInner_' + campId);
             if (!btn || !wheelInner || btn.disabled) return;
 
-            const slices = Object.entries(wheelSlices);
+            const slices = Object.entries(wheelSlices[campId] || {});
             if (slices.length === 0) {
-                alert('Pa gen tranch configuré pou roulette a.');
+                alert('Pa gen tranch configuré pou roulette sa a.');
                 return;
             }
 
@@ -2327,15 +2603,17 @@ self.addEventListener('fetch', event => {
             wheelInner.style.transform = `rotate(${finalRotation}deg)`;
 
             setTimeout(() => {
-                recordSpinResult(sliceId, slice);
+                recordSpinResult(campId, sliceId, slice);
             }, 4100);
         }
 
-        function recordSpinResult(sliceId, slice) {
-            const info = getWheelPeriodInfo();
+        function recordSpinResult(campId, sliceId, slice) {
+            const camp = wheelCampaigns[campId];
+            const info = getWheelPeriodInfo(camp);
             if (!info) return;
 
             db.ref('wheelSpins').push({
+                campId,
                 studentId: currentUser.id,
                 periodKey: info.periodKey,
                 sliceId,
@@ -2381,10 +2659,148 @@ self.addEventListener('fetch', event => {
             if (textGroup) textGroup.style.display = type === 'parole' ? 'block' : 'none';
         }
 
-        function addWheelSlice() {
-            const type = document.getElementById('wheelSliceType').value;
-            const imageUrl = document.getElementById('wheelSliceImage').value;
-            const text = document.getElementById('wheelSliceText').value;
+        function createWheelCampaign() {
+            const name = document.getElementById('newWheelName').value;
+            const intervalDays = parseFloat(document.getElementById('newWheelInterval').value);
+            const timeOfDay = document.getElementById('newWheelTime').value;
+            const maxSpins = parseInt(document.getElementById('newWheelMaxSpins').value) || 1;
+
+            if (!name || !intervalDays || !timeOfDay) {
+                alert('Veuillez remplir tous les champs');
+                return;
+            }
+
+            db.ref('wheelCampaigns').push({
+                name, intervalDays, timeOfDay, maxSpins, active: false
+            }).then(() => {
+                alert('✅ Roulette créée. Ajoutez des tranches avec "⚙️ Gérer".');
+                document.getElementById('newWheelName').value = '';
+                document.getElementById('newWheelInterval').value = '';
+                document.getElementById('newWheelMaxSpins').value = '1';
+            });
+        }
+
+        function deleteWheelCampaign(campId) {
+            if (confirm('Êtes-vous sûr? Ceci supprimera aussi ses tranches.')) {
+                db.ref('wheelCampaigns/' + campId).remove();
+                db.ref('wheelSlices/' + campId).remove();
+            }
+        }
+
+        function startWheelCampaign(campId) {
+            const camp = wheelCampaigns[campId];
+            if (!camp) return;
+            const [hh, mm] = (camp.timeOfDay || '08:00').split(':').map(Number);
+            const now = new Date();
+            const anchor = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh, mm, 0, 0);
+
+            db.ref('wheelCampaigns/' + campId).update({
+                active: true,
+                anchorAt: anchor.getTime()
+            }).then(() => {
+                alert('✅ Roulette démarrée!');
+            });
+        }
+
+        function stopWheelCampaign(campId) {
+            db.ref('wheelCampaigns/' + campId).update({ active: false });
+        }
+
+        function showWheelCampaignModal(campId) {
+            const camp = wheelCampaigns[campId];
+            if (!camp) return;
+            const slices = wheelSlices[campId] || {};
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <span class="modal-close" onclick="this.parentElement.parentElement.remove()">✕</span>
+                    <h2>⚙️ ${camp.name}</h2>
+                    <div class="form-group">
+                        <label>Chak konbyen jou</label>
+                        <input type="number" id="campInterval_${campId}" value="${camp.intervalDays || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label>Nan ki lè</label>
+                        <input type="time" id="campTime_${campId}" value="${camp.timeOfDay || '08:00'}">
+                    </div>
+                    <div class="form-group">
+                        <label>Konbyen fwa yon moun ka vire pa peryòd</label>
+                        <input type="number" id="campMaxSpins_${campId}" value="${camp.maxSpins || 1}">
+                    </div>
+                    <button class="btn btn-primary" onclick="updateWheelCampaign('${campId}')">💾 Enregistrer</button>
+                    <hr style="margin: 15px 0;">
+                    <h3>➕ Ajouter une Tranche</h3>
+                    <div class="form-group">
+                        <label>Type</label>
+                        <select id="sliceType_${campId}" onchange="toggleWheelSliceFields2('${campId}')">
+                            <option value="photo">📷 Foto (prim)</option>
+                            <option value="parole">💬 Ti Pawòl</option>
+                            <option value="nulle">❌ Nulle</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="sliceImgGroup_${campId}">
+                        <label>Foto (Lien Image)</label>
+                        <input type="url" id="sliceImage_${campId}" placeholder="https://...">
+                    </div>
+                    <div class="form-group" id="sliceTextGroup_${campId}" style="display: none;">
+                        <label>Ti Pawòl</label>
+                        <textarea id="sliceText_${campId}" placeholder="Ex: Bèl travay! Kontinye eseye."></textarea>
+                    </div>
+                    <button class="btn btn-success" onclick="addWheelSlice('${campId}')">➕ Ajouter</button>
+                    <h3 style="margin-top: 15px;">Tranches (${Object.keys(slices).length})</h3>
+                    <table class="table">
+                        <thead><tr><th>Type</th><th>Contenu</th><th>Actions</th></tr></thead>
+                        <tbody>
+                            ${Object.entries(slices).map(([sliceId, s]) => `
+                                <tr>
+                                    <td>${s.type === 'photo' ? '📷' : s.type === 'parole' ? '💬' : '❌'}</td>
+                                    <td>${s.type === 'photo' ? `<img src="${s.imageUrl}" style="width:32px; height:32px; object-fit:cover; border-radius:6px;">` : s.type === 'parole' ? (s.text || '') : '—'}</td>
+                                    <td>
+                                        <button class="btn btn-primary" onclick="showEditWheelSliceModal('${campId}', '${sliceId}')" style="padding: 4px 8px; font-size: 11px;">✏️</button>
+                                        <button class="btn btn-danger" onclick="deleteWheelSlice('${campId}', '${sliceId}')" style="padding: 4px 8px; font-size: 11px;">🗑️</button>
+                                    </td>
+                                </tr>
+                            `).join('') || '<tr><td colspan="3">Aucune tranche</td></tr>'}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            ImgLinkConverter.attachInline('sliceImage_' + campId);
+        }
+
+        function refreshWheelCampaignModal(campId) {
+            const openModal = document.querySelector('.modal.active');
+            if (openModal) openModal.remove();
+            showWheelCampaignModal(campId);
+        }
+
+        function toggleWheelSliceFields2(campId) {
+            const type = document.getElementById('sliceType_' + campId).value;
+            document.getElementById('sliceImgGroup_' + campId).style.display = type === 'photo' ? 'block' : 'none';
+            document.getElementById('sliceTextGroup_' + campId).style.display = type === 'parole' ? 'block' : 'none';
+        }
+
+        function updateWheelCampaign(campId) {
+            const intervalDays = parseFloat(document.getElementById('campInterval_' + campId).value);
+            const timeOfDay = document.getElementById('campTime_' + campId).value;
+            const maxSpins = parseInt(document.getElementById('campMaxSpins_' + campId).value) || 1;
+
+            if (!intervalDays || !timeOfDay) {
+                alert('Veuillez remplir tous les champs');
+                return;
+            }
+
+            db.ref('wheelCampaigns/' + campId).update({ intervalDays, timeOfDay, maxSpins }).then(() => {
+                alert('✅ Roulette mise à jour');
+            });
+        }
+
+        function addWheelSlice(campId) {
+            const type = document.getElementById('sliceType_' + campId).value;
+            const imageUrl = document.getElementById('sliceImage_' + campId).value;
+            const text = document.getElementById('sliceText_' + campId).value;
 
             if (type === 'photo' && !imageUrl) {
                 alert('Mete yon foto pou prim sa a');
@@ -2395,108 +2811,330 @@ self.addEventListener('fetch', event => {
                 return;
             }
 
-            db.ref('wheelSlices').push({
+            db.ref('wheelSlices/' + campId).push({
                 type,
                 imageUrl: type === 'photo' ? imageUrl : '',
                 text: type === 'parole' ? text : ''
             }).then(() => {
-                alert('✅ Tranche ajoutée');
-                document.getElementById('wheelSliceImage').value = '';
-                document.getElementById('wheelSliceText').value = '';
+                refreshWheelCampaignModal(campId);
             });
         }
 
-        function deleteWheelSlice(id) {
+        function deleteWheelSlice(campId, sliceId) {
             if (confirm('Êtes-vous sûr?')) {
-                db.ref('wheelSlices/' + id).remove();
+                db.ref('wheelSlices/' + campId + '/' + sliceId).remove().then(() => {
+                    refreshWheelCampaignModal(campId);
+                });
             }
         }
 
-        function showEditWheelSliceModal(id) {
-            const slice = wheelSlices[id];
+        function showEditWheelSliceModal(campId, sliceId) {
+            const slice = (wheelSlices[campId] || {})[sliceId];
             if (!slice) return;
+            const openModal = document.querySelector('.modal.active');
+            if (openModal) openModal.remove();
+
             const modal = document.createElement('div');
             modal.className = 'modal active';
             modal.innerHTML = `
                 <div class="modal-content">
-                    <span class="modal-close" onclick="this.parentElement.parentElement.remove()">✕</span>
+                    <span class="modal-close" onclick="this.parentElement.parentElement.remove(); refreshWheelCampaignModal('${campId}')">✕</span>
                     <h2>✏️ Modifier la Tranche</h2>
                     <div class="form-group">
                         <label>Type</label>
-                        <select id="editWheelType" onchange="toggleWheelSliceFields('editWheel')">
+                        <select id="editSliceType" onchange="toggleEditSliceFields()">
                             <option value="photo" ${slice.type === 'photo' ? 'selected' : ''}>📷 Foto (prim)</option>
                             <option value="parole" ${slice.type === 'parole' ? 'selected' : ''}>💬 Ti Pawòl</option>
                             <option value="nulle" ${slice.type === 'nulle' ? 'selected' : ''}>❌ Nulle</option>
                         </select>
                     </div>
-                    <div class="form-group" id="editWheelImageGroup" style="display: ${slice.type === 'photo' ? 'block' : 'none'};">
+                    <div class="form-group" id="editSliceImgGroup" style="display: ${slice.type === 'photo' ? 'block' : 'none'};">
                         <label>Foto (Lien Image)</label>
-                        <input type="url" id="editWheelImage" value="${slice.imageUrl || ''}">
+                        <input type="url" id="editSliceImage" value="${slice.imageUrl || ''}">
                     </div>
-                    <div class="form-group" id="editWheelTextGroup" style="display: ${slice.type === 'parole' ? 'block' : 'none'};">
+                    <div class="form-group" id="editSliceTextGroup" style="display: ${slice.type === 'parole' ? 'block' : 'none'};">
                         <label>Ti Pawòl</label>
-                        <textarea id="editWheelText">${slice.text || ''}</textarea>
+                        <textarea id="editSliceText">${slice.text || ''}</textarea>
                     </div>
-                    <button class="btn btn-success" onclick="updateWheelSlice('${id}')">💾 Enregistrer</button>
+                    <button class="btn btn-success" onclick="updateWheelSlice('${campId}', '${sliceId}')">💾 Enregistrer</button>
                 </div>
             `;
             document.body.appendChild(modal);
-            ImgLinkConverter.attachInline('editWheelImage');
+            ImgLinkConverter.attachInline('editSliceImage');
         }
 
-        function updateWheelSlice(id) {
-            const type = document.getElementById('editWheelType').value;
-            const imageUrl = document.getElementById('editWheelImage').value;
-            const text = document.getElementById('editWheelText').value;
+        function toggleEditSliceFields() {
+            const type = document.getElementById('editSliceType').value;
+            document.getElementById('editSliceImgGroup').style.display = type === 'photo' ? 'block' : 'none';
+            document.getElementById('editSliceTextGroup').style.display = type === 'parole' ? 'block' : 'none';
+        }
 
-            db.ref('wheelSlices/' + id).update({
+        function updateWheelSlice(campId, sliceId) {
+            const type = document.getElementById('editSliceType').value;
+            const imageUrl = document.getElementById('editSliceImage').value;
+            const text = document.getElementById('editSliceText').value;
+
+            db.ref('wheelSlices/' + campId + '/' + sliceId).update({
                 type,
                 imageUrl: type === 'photo' ? imageUrl : '',
                 text: type === 'parole' ? text : ''
             }).then(() => {
-                alert('✅ Tranche mise à jour');
                 document.querySelector('.modal.active').remove();
+                refreshWheelCampaignModal(campId);
             });
         }
 
-        function updateWheelSettings() {
-            const intervalDays = parseFloat(document.getElementById('wheelIntervalDays').value);
-            const timeOfDay = document.getElementById('wheelTimeOfDay').value;
-
-            if (!intervalDays || !timeOfDay) {
-                alert('Veuillez remplir tous les champs');
-                return;
-            }
-
-            db.ref('wheelSettings').update({ intervalDays, timeOfDay }).then(() => {
-                alert('✅ Programmation enregistrée');
-            });
+        // ===== Anniversaire =====
+        function getTodaysBirthdayStudents() {
+            const today = new Date();
+            const mmdd = String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+            return Object.entries(students).filter(([id, s]) => s.birthday && s.birthday.slice(5, 10) === mmdd);
         }
 
-        function startWheelNow() {
-            const intervalDays = parseFloat(document.getElementById('wheelIntervalDays').value) || wheelSettings.intervalDays || 7;
-            const timeOfDay = document.getElementById('wheelTimeOfDay').value || wheelSettings.timeOfDay || '08:00';
-            const [hh, mm] = timeOfDay.split(':').map(Number);
-            const now = new Date();
-            const anchor = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh, mm, 0, 0);
+        function maybeShowBirthdayPopup() {
+            const todays = getTodaysBirthdayStudents();
+            if (todays.length === 0) return;
+            const dateKey = new Date().toISOString().split('T')[0];
+            const seenKey = 'pmbf_bday_seen_' + dateKey;
+            if (localStorage.getItem(seenKey)) return;
+            localStorage.setItem(seenKey, '1');
+            showBirthdayModal(todays, dateKey);
+        }
 
-            db.ref('wheelSettings').update({
-                intervalDays, timeOfDay,
-                active: true,
-                anchorAt: anchor.getTime()
+        function showBirthdayModal(list, dateKey) {
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.innerHTML = `
+                <div class="modal-content">
+                    <span class="modal-close" onclick="this.parentElement.parentElement.remove()">✕</span>
+                    ${list.map(([id, s]) => `
+                        <div style="text-align:center; margin-bottom:20px;">
+                            ${s.photoUrl ? `<img src="${s.photoUrl}" style="width:100px; height:100px; object-fit:cover; border-radius:50%; margin-bottom:10px;">` : ''}
+                            <h2>🎉🎂 Jodi a se anniversaire ${s.name}! 🎂🎉</h2>
+                            ${s.bio ? `<p style="font-style:italic; color:#666;">"${s.bio}"</p>` : ''}
+                            <div id="bdayMsgs_${id}" style="text-align:left; margin:15px 0; max-height:150px; overflow-y:auto;">
+                                ${renderBirthdayMessages(id, dateKey)}
+                            </div>
+                            <textarea id="bdayInput_${id}" placeholder="Ekri yon ti mesaj pou ${s.name}..."></textarea>
+                            <button class="btn btn-success" onclick="sendBirthdayMessage('${id}', '${dateKey}')" style="margin-top:8px;">💌 Voye Mesaj</button>
+                        </div>
+                        <hr>
+                    `).join('')}
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        function renderBirthdayMessages(studentId, dateKey) {
+            const key = studentId + '_' + dateKey;
+            const msgs = birthdayMessages[key] || {};
+            const list = Object.values(msgs).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+            if (list.length === 0) return '<p style="color:#999; font-size:13px;">Pa gen mesaj ankò...</p>';
+            return list.map(m => `<p style="font-size:13px; margin-bottom:6px;"><strong>${m.fromName}:</strong> ${m.message}</p>`).join('');
+        }
+
+        function sendBirthdayMessage(studentId, dateKey) {
+            const input = document.getElementById('bdayInput_' + studentId);
+            const message = input.value.trim();
+            if (!message) return;
+            const key = studentId + '_' + dateKey;
+            db.ref('birthdayMessages/' + key).push({
+                fromName: currentUser.name,
+                message,
+                timestamp: Date.now()
             }).then(() => {
-                alert('✅ Roulette démarrée!');
+                input.value = '';
+                const box = document.getElementById('bdayMsgs_' + studentId);
+                if (box) box.innerHTML = renderBirthdayMessages(studentId, dateKey);
             });
         }
 
-        function stopWheelNow() {
-            db.ref('wheelSettings').update({ active: false });
+        // ===== Chat =====
+        function getAllUsers() {
+            const list = [{ id: 'admin', name: 'Administrateur' }];
+            Object.entries(students).forEach(([id, s]) => list.push({ id, name: s.name }));
+            return list;
+        }
+
+        function initials(name) {
+            return (name || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text || '';
+            return div.innerHTML;
+        }
+
+        function getChatId(a, b) {
+            return [a, b].sort().join('_');
+        }
+
+        function getFriendStatus(otherId) {
+            const entry = Object.entries(friendRequests).find(([id, r]) =>
+                (r.fromId === currentUser.id && r.toId === otherId) ||
+                (r.fromId === otherId && r.toId === currentUser.id)
+            );
+            return entry ? { id: entry[0], ...entry[1] } : null;
+        }
+
+        function getMyFriends() {
+            return Object.entries(friendRequests)
+                .filter(([id, r]) => r.status === 'accepted' && (r.fromId === currentUser.id || r.toId === currentUser.id))
+                .map(([id, r]) => {
+                    const otherId = r.fromId === currentUser.id ? r.toId : r.fromId;
+                    const otherName = r.fromId === currentUser.id ? r.toName : r.fromName;
+                    return { id: otherId, name: otherName };
+                });
+        }
+
+        function getPendingRequests(direction) {
+            return Object.entries(friendRequests)
+                .filter(([id, r]) => r.status === 'pending' && (direction === 'received' ? r.toId === currentUser.id : r.fromId === currentUser.id))
+                .map(([id, r]) => ({ id, ...r }));
+        }
+
+        function sendFriendRequest(toId, toName) {
+            db.ref('friendRequests').push({
+                fromId: currentUser.id,
+                fromName: currentUser.name,
+                toId,
+                toName,
+                status: 'pending',
+                timestamp: Date.now()
+            });
+        }
+
+        function acceptFriendRequest(reqId) {
+            db.ref('friendRequests/' + reqId).update({ status: 'accepted' });
+        }
+
+        function declineFriendRequest(reqId) {
+            db.ref('friendRequests/' + reqId).remove();
+        }
+
+        function openChat(id, name) {
+            activeChatWith = { id, name };
+            updateUI();
+            setTimeout(scrollChatToBottom, 100);
+        }
+
+        function closeChat() {
+            activeChatWith = null;
+            updateUI();
+        }
+
+        function sendChatMessage() {
+            const input = document.getElementById('chatInput');
+            if (!input) return;
+            const text = input.value.trim();
+            if (!text || !activeChatWith) return;
+            const chatId = getChatId(currentUser.id, activeChatWith.id);
+            db.ref('chats/' + chatId + '/messages').push({
+                fromId: currentUser.id,
+                fromName: currentUser.name,
+                text,
+                timestamp: Date.now()
+            });
+            input.value = '';
+        }
+
+        function scrollChatToBottom() {
+            const box = document.getElementById('chatMessagesBox');
+            if (box) box.scrollTop = box.scrollHeight;
+        }
+
+        function renderChatSection() {
+            if (activeChatWith) {
+                return renderChatConversation(activeChatWith);
+            }
+            return renderChatHome();
+        }
+
+        function renderChatHome() {
+            const received = getPendingRequests('received');
+            const sent = getPendingRequests('sent');
+            const friends = getMyFriends();
+            const friendIds = new Set(friends.map(f => f.id));
+            const others = getAllUsers().filter(u => u.id !== currentUser.id && !friendIds.has(u.id) && !getFriendStatus(u.id));
+
+            return `
+                <h2>💬 Chat</h2>
+                ${received.length > 0 ? `
+                    <h3 style="margin-top: 15px;">🔔 Demandes Reçues</h3>
+                    ${received.map(r => `
+                        <div class="chat-request-row">
+                            <div class="chat-avatar">${initials(r.fromName)}</div>
+                            <span style="flex:1;">${r.fromName}</span>
+                            <button class="btn btn-success" onclick="acceptFriendRequest('${r.id}')" style="padding: 5px 10px; font-size: 12px;">✅</button>
+                            <button class="btn btn-danger" onclick="declineFriendRequest('${r.id}')" style="padding: 5px 10px; font-size: 12px;">❌</button>
+                        </div>
+                    `).join('')}
+                ` : ''}
+                ${sent.length > 0 ? `
+                    <h3 style="margin-top: 15px;">📤 Demandes Envoyées</h3>
+                    ${sent.map(r => `
+                        <div class="chat-request-row">
+                            <div class="chat-avatar">${initials(r.toName)}</div>
+                            <span style="flex:1;">${r.toName}</span>
+                            <span style="color:#999; font-size: 12px;">⏳ En attente</span>
+                            <button class="btn btn-secondary" onclick="declineFriendRequest('${r.id}')" style="padding: 5px 10px; font-size: 12px;">Annuler</button>
+                        </div>
+                    `).join('')}
+                ` : ''}
+                <h3 style="margin-top: 15px;">👥 Mes Amis (${friends.length})</h3>
+                ${friends.length === 0 ? '<p style="color:#999; font-size: 13px;">Poko gen zanmi. Ajoute yon moun anba a!</p>' : friends.map(f => `
+                    <div class="chat-friend-row" onclick="openChat('${f.id}', '${(f.name || '').replace(/'/g, "\\'")}')">
+                        <div class="chat-avatar">${initials(f.name)}</div>
+                        <span style="flex:1;">${f.name}</span>
+                        <span style="color:#1a73e8;">›</span>
+                    </div>
+                `).join('')}
+                <h3 style="margin-top: 15px;">➕ Ajouter un Ami</h3>
+                ${others.length === 0 ? '<p style="color:#999; font-size: 13px;">Pa gen lòt moun disponib.</p>' : others.map(u => `
+                    <div class="chat-friend-row">
+                        <div class="chat-avatar">${initials(u.name)}</div>
+                        <span style="flex:1;">${u.name}</span>
+                        <button class="btn btn-primary" onclick="sendFriendRequest('${u.id}', '${(u.name || '').replace(/'/g, "\\'")}')" style="padding: 5px 10px; font-size: 12px;">➕ Ajouter</button>
+                    </div>
+                `).join('')}
+            `;
+        }
+
+        function renderChatConversation(other) {
+            const chatId = getChatId(currentUser.id, other.id);
+            const msgs = Object.values((chats[chatId] && chats[chatId].messages) || {}).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+
+            return `
+                <div class="chat-card">
+                    <div class="chat-header">
+                        <button class="btn btn-secondary" onclick="closeChat()" style="padding: 6px 10px; font-size: 12px;">← Retour</button>
+                        <div class="chat-avatar">${initials(other.name)}</div>
+                        <span class="chat-header-name">${other.name}</span>
+                    </div>
+                    <div class="chat-messages" id="chatMessagesBox">
+                        ${msgs.length === 0 ? '<p style="text-align:center; color:#999; margin-top:30px;">Kòmanse chat la... 👋</p>' : msgs.map(m => `
+                            <div class="chat-bubble ${m.fromId === currentUser.id ? 'chat-bubble-me' : 'chat-bubble-them'}">
+                                ${m.fromId !== currentUser.id ? `<div class="chat-bubble-sender">${m.fromName}</div>` : ''}
+                                <div>${escapeHtml(m.text)}</div>
+                                <div class="chat-bubble-time">${new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div class="chat-input-row">
+                        <input type="text" id="chatInput" placeholder="Ekri yon mesaj..." onkeypress="if(event.key==='Enter'){sendChatMessage();}">
+                        <button class="btn btn-primary" onclick="sendChatMessage()">➤</button>
+                    </div>
+                </div>
+            `;
         }
 
         function updateUI() {
             if (currentUser) {
                 renderSections();
+                applyActiveSection();
                 renderNotifBanner();
+                scrollChatToBottom();
             }
         }
     </script>
