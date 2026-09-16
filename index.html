@@ -1062,6 +1062,9 @@ self.addEventListener('fetch', event => {
         let birthdayMessages = {};
         let friendRequests = {};
         let chats = {};
+        let activities = {};
+        let classExpenses = {};
+        let donPaymentsRecord = {};
         let activeChatWith = null;
         let activeSectionIndex = 0;
         let adminPassword = '1a2b3c'; // Stockée localement
@@ -1151,6 +1154,21 @@ self.addEventListener('fetch', event => {
 
             db.ref('chats').on('value', snapshot => {
                 chats = snapshot.val() || {};
+                updateUI();
+            });
+
+            db.ref('activities').on('value', snapshot => {
+                activities = snapshot.val() || {};
+                updateUI();
+            });
+
+            db.ref('classExpenses').on('value', snapshot => {
+                classExpenses = snapshot.val() || {};
+                updateUI();
+            });
+
+            db.ref('donPaymentsRecord').on('value', snapshot => {
+                donPaymentsRecord = snapshot.val() || {};
                 updateUI();
             });
         }
@@ -1347,8 +1365,8 @@ self.addEventListener('fetch', event => {
             const navTabs = document.getElementById('navTabs');
             navTabs.innerHTML = '';
             const sections = isAdmin ? 
-                ['Élèves', 'Budgets', 'Caisse', 'Dons', 'Roulette', 'Partenaires', 'Chat', 'Paramètres'] :
-                ['Tableau de Bord', 'Caisse Personnelle', 'Dons', 'Roulette', 'Partenaires', 'Chat'];
+                ['Élèves', 'Budgets', 'Caisse', 'Dons', 'Roulette', 'Partenaires', 'Chat', 'Aktivité', 'Paramètres'] :
+                ['Tableau de Bord', 'Caisse Personnelle', 'Dons', 'Roulette', 'Partenaires', 'Aktivité', 'Chat'];
             currentSectionLabels = sections;
 
             sections.forEach((section, index) => {
@@ -1664,6 +1682,16 @@ self.addEventListener('fetch', event => {
                 </div>
             `;
 
+            // Aktivité (Student View)
+            sectionsDiv.innerHTML += `
+                <div class="section">
+                    <div class="card">
+                        <h2>📚 Aktivite yo</h2>
+                        ${renderStudentActivities()}
+                    </div>
+                </div>
+            `;
+
             // Chat
             sectionsDiv.innerHTML += `
                 <div class="section">
@@ -1748,6 +1776,10 @@ self.addEventListener('fetch', event => {
                             <label>Lien Image (URL)</label>
                             <input type="url" id="budgetImage" placeholder="https://...">
                         </div>
+                        <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
+                            <input type="checkbox" id="budgetIncludeInClass" style="width: 20px; height: 20px; cursor: pointer;">
+                            <label style="margin-bottom: 0; cursor: pointer;">✅ Inclure cet argent dans la Caisse Classe</label>
+                        </div>
                         <button class="btn btn-success" onclick="addBudget()">➕ Créer Budget</button>
                     </div>
                     <div class="card">
@@ -1761,7 +1793,9 @@ self.addEventListener('fetch', event => {
                                         <p>${budget.description}</p>
                                         <div class="amount">Budget total: ${budget.totalAmount || (budget.amount * Object.keys(students).length)}G</div>
                                         <div class="amount">Part par élève: ${budget.amount}G</div>
+                                        ${budget.includeInClassCaisse ? '<div style="background: #d4edda; color: #155724; padding: 5px 8px; border-radius: 4px; font-size: 12px; margin-bottom: 8px;">✅ Va à la Caisse Classe</div>' : '<div style="background: #f8d7da; color: #721c24; padding: 5px 8px; border-radius: 4px; font-size: 12px; margin-bottom: 8px;">❌ Ne va pas à la Caisse Classe</div>'}
                                         <button class="btn btn-primary" onclick="showEditBudgetModal('${id}')" style="padding: 5px 10px; font-size: 12px;">✏️ Modifier</button>
+                                        <button class="btn btn-secondary" onclick="toggleBudgetCaisse('${id}')" style="padding: 5px 10px; font-size: 12px;">${budget.includeInClassCaisse ? '❌ Retirer de Caisse' : '✅ Ajouter à Caisse'}</button>
                                         <button class="btn btn-secondary" onclick="showBudgetPaymentsModal('${id}')" style="padding: 5px 10px; font-size: 12px;">💵 Paiements</button>
                                         <button class="btn btn-danger" onclick="deleteBudget('${id}')" style="padding: 5px 10px; font-size: 12px;">Supprimer</button>
                                     </div>
@@ -1774,23 +1808,59 @@ self.addEventListener('fetch', event => {
 
             // Cash Box Section
             const pendingWithdrawals = Object.entries(cashBox).filter(([id, c]) => c.type === 'retrait' && c.status === 'pending');
+            const classExpensesList = Object.entries(classExpenses);
             sectionsDiv.innerHTML += `
                 <div class="section">
                     <div class="card">
-                        <h2>💰 Gestion de la Caisse</h2>
+                        <h2>💰 Gestion de la Caisse Classe</h2>
+                        <p style="font-size: 13px; color: #666; margin-bottom: 15px;">La caisse classe contient: <strong>Dons + Budgets sélectionnés - Dépenses</strong></p>
                         <div class="stats">
                             <div class="stat-box">
-                                <h3>Total Caisse</h3>
-                                <div class="value">${calculateCashBoxTotal()}G</div>
-                            </div>
-                            <div class="stat-box">
-                                <h3>Élèves Ayant Déposé</h3>
-                                <div class="value">${calculatePaidStudents()}</div>
+                                <h3>💵 Total Caisse Classe</h3>
+                                <div class="value" style="color: #28a745;">${calculateClassCaisseTotal()}G</div>
                             </div>
                         </div>
                     </div>
+
                     <div class="card">
-                        <h3>⏳ Demandes de Retrait en Attente</h3>
+                        <h2>➕ Enregistrer une Dépense</h2>
+                        <div class="form-group">
+                            <label>Montant (Gourdes)</label>
+                            <input type="number" id="expenseAmount" placeholder="Ex: 5000">
+                        </div>
+                        <div class="form-group">
+                            <label>Description de la Dépense</label>
+                            <input type="text" id="expenseDesc" placeholder="Ex: Achat de fournitures scolaires">
+                        </div>
+                        <div class="form-group">
+                            <label>Date</label>
+                            <input type="date" id="expenseDate">
+                        </div>
+                        <button class="btn btn-success" onclick="addClassExpense()">➕ Enregistrer Dépense</button>
+                    </div>
+
+                    <div class="card">
+                        <h3>📋 Historique des Dépenses</h3>
+                        <table class="table" style="font-size: 13px;">
+                            <thead>
+                                <tr><th>Montant</th><th>Description</th><th>Date</th><th>Action</th></tr>
+                            </thead>
+                            <tbody>
+                                ${classExpensesList.length === 0 ? '<tr><td colspan="4">Aucune dépense enregistrée.</td></tr>' : 
+                                classExpensesList.map(([id, expense]) => `
+                                    <tr>
+                                        <td><strong>${expense.amount}G</strong></td>
+                                        <td>${expense.description}</td>
+                                        <td>${expense.date}</td>
+                                        <td><button class="btn btn-danger" onclick="deleteClassExpense('${id}')" style="padding: 4px 8px; font-size: 11px;">🗑️</button></td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="card">
+                        <h3>⏳ Demandes de Retrait Personnel en Attente</h3>
                         <table class="table">
                             <thead>
                                 <tr><th>Élève</th><th>Montant</th><th>Description</th><th>Date</th><th>Actions</th></tr>
@@ -1988,6 +2058,70 @@ self.addEventListener('fetch', event => {
                 </div>
             `;
 
+            // Aktivité Section
+            sectionsDiv.innerHTML += `
+                <div class="section">
+                    <div class="card">
+                        <h2>📚 Gestion des Aktivités</h2>
+                        <div class="form-group">
+                            <label>Type d'Aktivité</label>
+                            <select id="activityType">
+                                <option value="">-- Chwazi yon type --</option>
+                                <option value="devoir-individuel">Devoir Individuel</option>
+                                <option value="devoir-groupe">Devoir en Groupe</option>
+                                <option value="lecon">Leçon à Étudier</option>
+                                <option value="expose-individuel">Exposé Individuelle</option>
+                                <option value="expose-groupe">Exposé en Groupe</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Où (Détail)</label>
+                            <input type="text" id="activityWhere" placeholder="Ex: Math, Page 25 - Chapitre 3">
+                        </div>
+                        <div class="form-group">
+                            <label>Ouvrage (Liv yo Bay)</label>
+                            <input type="text" id="activityBook" placeholder="Nom de l'ouvrage">
+                        </div>
+                        <div class="form-group">
+                            <label>Numéro de Paj</label>
+                            <input type="number" id="activityPage" placeholder="Ex: 45">
+                        </div>
+                        <div class="form-group">
+                            <label>Support</label>
+                            <select id="activitySupport">
+                                <option value="">-- Chwazi yon sipò --</option>
+                                <option value="cahier">Nan Cahier</option>
+                                <option value="ouvrage">Nan Ouvrage Bay</option>
+                                <option value="feuille">Nan Fèy Blanche</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Dat Limit</label>
+                            <input type="date" id="activityDueDate">
+                        </div>
+                        <div class="form-group">
+                            <label>Nòm Professeur (Moun Responsab)</label>
+                            <input type="text" id="activityTeacher" placeholder="Ex: Mr. Jean Pierre, Mme Marie">
+                        </div>
+                        <div class="form-group">
+                            <label>Numéro d'Exercices (Opsyonal)</label>
+                            <input type="text" id="activityExercises" placeholder="Ex: a), b), c)  oswa  1-, 2-, 3-  oswa  Ex 1, Ex 2">
+                        </div>
+                        <div class="form-group">
+                            <label>Nòt sou Aktivite a (Opsyonal)</label>
+                            <textarea id="activityNotes" placeholder="Kòmantè oswa detay adisyonel..."></textarea>
+                        </div>
+                        <button class="btn btn-success" onclick="addActivity()">➕ Ajoute Aktivite</button>
+                    </div>
+                    <div class="card">
+                        <h3>📋 Lòd Aktivite yo</h3>
+                        <div id="activitiesListContainer">
+                            ${renderActivitiesList()}
+                        </div>
+                    </div>
+                </div>
+            `;
+
             // Paramètres Section
             sectionsDiv.innerHTML += `
                 <div class="section">
@@ -2144,6 +2278,7 @@ self.addEventListener('fetch', event => {
             const desc = document.getElementById('budgetDesc').value;
             const totalAmount = parseFloat(document.getElementById('budgetTotalAmount').value);
             const image = document.getElementById('budgetImage').value;
+            const includeInClassCaisse = document.getElementById('budgetIncludeInClass').checked;
 
             if (!title || !totalAmount) {
                 alert('Veuillez remplir les champs obligatoires');
@@ -2153,13 +2288,24 @@ self.addEventListener('fetch', event => {
             const count = Object.keys(students).length || 1;
             const amount = Math.ceil(totalAmount / count);
 
-            db.ref('budgets').push({ title, description: desc, totalAmount, amount, imageUrl: image, timestamp: Date.now() }).then(() => {
+            db.ref('budgets').push({ title, description: desc, totalAmount, amount, imageUrl: image, includeInClassCaisse, timestamp: Date.now() }).then(() => {
                 alert('✅ Budget créé');
                 document.getElementById('budgetTitle').value = '';
                 document.getElementById('budgetDesc').value = '';
                 document.getElementById('budgetTotalAmount').value = '';
                 document.getElementById('budgetImage').value = '';
+                document.getElementById('budgetIncludeInClass').checked = false;
                 document.getElementById('budgetPreview').textContent = '';
+            });
+        }
+
+        function toggleBudgetCaisse(budgetId) {
+            const budget = budgets[budgetId];
+            if (!budget) return;
+            const newState = !budget.includeInClassCaisse;
+            db.ref('budgets/' + budgetId).update({ includeInClassCaisse: newState }).then(() => {
+                alert(newState ? '✅ Budget ajouté à la Caisse Classe' : '❌ Budget retiré de la Caisse Classe');
+                updateUI();
             });
         }
 
@@ -2354,6 +2500,47 @@ self.addEventListener('fetch', event => {
             return '⏳ En attente';
         }
 
+        // Class Expenses
+        function addClassExpense() {
+            const amount = document.getElementById('expenseAmount').value;
+            const description = document.getElementById('expenseDesc').value;
+            const date = document.getElementById('expenseDate').value;
+
+            if (!amount || !description || !date) {
+                alert('Tanpri, ranpli tout jaden yo!');
+                return;
+            }
+
+            const expenseData = {
+                amount: parseFloat(amount),
+                description,
+                date,
+                createdAt: Date.now()
+            };
+
+            db.ref('classExpenses').push(expenseData).then(() => {
+                alert('Dépense enregistrée! 💰');
+                document.getElementById('expenseAmount').value = '';
+                document.getElementById('expenseDesc').value = '';
+                document.getElementById('expenseDate').value = '';
+                updateUI();
+            }).catch(err => {
+                console.error('Erè:', err);
+                alert('Erè: ' + err.message);
+            });
+        }
+
+        function deleteClassExpense(expenseId) {
+            if (confirm('Wè ou asire w vle efase depans sa a?')) {
+                db.ref('classExpenses/' + expenseId).remove().then(() => {
+                    alert('Dépense supprimée! ✅');
+                    updateUI();
+                }).catch(err => {
+                    console.error('Erè:', err);
+                });
+            }
+        }
+
         // Dons
         function getCampaignPeriods(camp) {
             const periods = [];
@@ -2479,6 +2666,42 @@ self.addEventListener('fetch', event => {
                 if (m.type === 'retrait' && m.status === 'approuve') return sum - parseFloat(m.amount || 0);
                 return sum;
             }, 0);
+        }
+
+        function calculateClassCaisseTotal() {
+            // Total des dons payés
+            let donTotal = 0;
+            Object.entries(donPayments).forEach(([campaignId, campaigns]) => {
+                const campaign = donCampaigns[campaignId];
+                if (campaign && campaign.amount) {
+                    Object.values(campaigns).forEach(dateKey => {
+                        const count = Object.keys(dateKey).length;
+                        donTotal += count * campaign.amount;
+                    });
+                }
+            });
+
+            // Ajouter les budgets marqués comme includeInClassCaisse
+            let budgetTotal = 0;
+            Object.entries(budgets).forEach(([budgetId, budget]) => {
+                if (budget.includeInClassCaisse) {
+                    // Compter l'argent collecté pour ce budget
+                    const collectedAmount = Object.values(budgetPayments).reduce((sum, payment) => {
+                        if (payment.budgetId === budgetId) {
+                            return sum + parseFloat(payment.amount || 0);
+                        }
+                        return sum;
+                    }, 0);
+                    budgetTotal += collectedAmount;
+                }
+            });
+
+            // Soustraire les dépenses
+            const expenses = Object.values(classExpenses).reduce((sum, expense) => {
+                return sum + parseFloat(expense.amount || 0);
+            }, 0);
+
+            return donTotal + budgetTotal - expenses;
         }
 
         function calculatePaidStudents() {
@@ -3173,6 +3396,261 @@ self.addEventListener('fetch', event => {
                     </div>
                 </div>
             `;
+        }
+
+        // ===== AKTIVITÉ FUNCTIONS =====
+        function addActivity() {
+            const type = document.getElementById('activityType').value;
+            const where = document.getElementById('activityWhere').value;
+            const book = document.getElementById('activityBook').value;
+            const page = document.getElementById('activityPage').value;
+            const support = document.getElementById('activitySupport').value;
+            const dueDate = document.getElementById('activityDueDate').value;
+            const teacher = document.getElementById('activityTeacher').value;
+            const exercises = document.getElementById('activityExercises').value;
+            const notes = document.getElementById('activityNotes').value;
+
+            if (!type || !where || !dueDate || !teacher) {
+                alert('Tanpri, ranpli tout jaden obligatwa yo (Type, Kote, Dat Limit, Nòm Professeur)!');
+                return;
+            }
+
+            const activityData = {
+                type,
+                where,
+                book,
+                page,
+                support,
+                dueDate,
+                teacher,
+                exercises,
+                notes,
+                createdAt: Date.now(),
+                completed: []
+            };
+
+            db.ref('activities').push(activityData).then(() => {
+                // Clear form
+                document.getElementById('activityType').value = '';
+                document.getElementById('activityWhere').value = '';
+                document.getElementById('activityBook').value = '';
+                document.getElementById('activityPage').value = '';
+                document.getElementById('activitySupport').value = '';
+                document.getElementById('activityDueDate').value = '';
+                document.getElementById('activityTeacher').value = '';
+                document.getElementById('activityExercises').value = '';
+                document.getElementById('activityNotes').value = '';
+                alert('Aktivite a te ajoute avèk siksè!');
+                updateUI();
+            }).catch(err => {
+                console.error('Erè kand ajoute aktivite:', err);
+                alert('Erè: ' + err.message);
+            });
+        }
+
+        function renderStudentActivities() {
+            const actList = Object.entries(activities).sort((a, b) => new Date(a[1].dueDate) - new Date(b[1].dueDate));
+            
+            if (actList.length === 0) {
+                return '<p style="color: #999;">Pa gen aktivite pou yo fè pou kounye a...</p>';
+            }
+
+            const typeEmojis = {
+                'devoir-individuel': '📝',
+                'devoir-groupe': '👥📝',
+                'lecon': '📖',
+                'expose-individuel': '🎤',
+                'expose-groupe': '👥🎤'
+            };
+
+            const typeLabels = {
+                'devoir-individuel': 'Devoir Individuel',
+                'devoir-groupe': 'Devoir en Groupe',
+                'lecon': 'Leçon à Étudier',
+                'expose-individuel': 'Exposé Individuelle',
+                'expose-groupe': 'Exposé en Groupe'
+            };
+
+            return `
+                ${actList.map(([id, act]) => {
+                    const typeEmoji = typeEmojis[act.type] || '📌';
+                    const typeLabel = typeLabels[act.type] || act.type;
+                    const dueDate = new Date(act.dueDate);
+                    const today = new Date();
+                    const isOverdue = dueDate < today;
+                    const daysUntil = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
+                    const dueDateStr = dueDate.toLocaleDateString('ht-HT');
+                    const supportLabel = {
+                        'cahier': 'Nan Cahie',
+                        'ouvrage': 'Nan Ouvraj Ba',
+                        'feuille': 'Nan Fèy Blanche'
+                    }[act.support] || act.support;
+
+                    return `
+                        <div class="card" style="background: ${isOverdue ? '#fff3cd' : '#f8f9fa'}; border-left: 4px solid ${isOverdue ? '#dc3545' : '#28a745'}; margin-bottom: 15px;">
+                            <div style="display: flex; justify-content: space-between; align-items: start;">
+                                <div style="flex: 1;">
+                                    <h3 style="margin: 0 0 8px 0; color: #1a73e8;">${typeEmoji} ${typeLabel}</h3>
+                                    <p style="margin: 5px 0; font-size: 14px;"><strong>Kote:</strong> ${act.where}</p>
+                                    ${act.book ? `<p style="margin: 5px 0; font-size: 14px;"><strong>Ouvraj:</strong> ${act.book}${act.page ? ' - Paj ' + act.page : ''}</p>` : ''}
+                                    ${act.exercises ? `<p style="margin: 5px 0; font-size: 14px;"><strong>Egzèsis:</strong> ${act.exercises}</p>` : ''}
+                                    <p style="margin: 5px 0; font-size: 14px;"><strong>Sipò:</strong> ${supportLabel}</p>
+                                    <p style="margin: 5px 0; font-size: 14px;"><strong>Professeur:</strong> ${act.teacher}</p>
+                                    ${act.notes ? `<p style="margin: 8px 0; font-size: 13px; background: white; padding: 8px; border-radius: 4px;"><strong>Nòt:</strong> ${act.notes}</p>` : ''}
+                                </div>
+                                <div style="text-align: right; margin-left: 15px;">
+                                    <div style="font-size: 14px; font-weight: bold; ${isOverdue ? 'color: #dc3545;' : 'color: #28a745;'}">
+                                        ${isOverdue ? '⚠️ Pase dat' : (daysUntil <= 2 ? '⏰ ' + daysUntil + ' jou res' : '📅 ' + dueDateStr)}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            `;
+        }
+
+        function renderActivitiesList() {
+            const actList = Object.entries(activities).sort((a, b) => (b[1].createdAt || 0) - (a[1].createdAt || 0));
+            
+            if (actList.length === 0) {
+                return '<p style="color: #999;">Pa gen aktivite ankò...</p>';
+            }
+
+            const typeEmojis = {
+                'devoir-individuel': '📝',
+                'devoir-groupe': '👥📝',
+                'lecon': '📖',
+                'expose-individuel': '🎤',
+                'expose-groupe': '👥🎤'
+            };
+
+            const typeLabels = {
+                'devoir-individuel': 'Devoir Individuel',
+                'devoir-groupe': 'Devoir en Groupe',
+                'lecon': 'Leçon à Étudier',
+                'expose-individuel': 'Exposé Individuelle',
+                'expose-groupe': 'Exposé en Groupe'
+            };
+
+            return `
+                <table class="table" style="font-size: 13px;">
+                    <thead>
+                        <tr>
+                            <th>Tip</th>
+                            <th>Detay</th>
+                            <th>Liv</th>
+                            <th>Exs</th>
+                            <th>Sipò</th>
+                            <th>Dat Limit</th>
+                            <th>Professeur</th>
+                            <th>Aksyon</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${actList.map(([id, act]) => {
+                            const typeEmoji = typeEmojis[act.type] || '📌';
+                            const typeLabel = typeLabels[act.type] || act.type;
+                            const dueDate = new Date(act.dueDate).toLocaleDateString('ht-HT');
+                            const isOverdue = new Date(act.dueDate) < new Date();
+                            const supportLabel = {
+                                'cahier': 'Cahie',
+                                'ouvrage': 'Ouvraj',
+                                'feuille': 'Fèy'
+                            }[act.support] || act.support;
+
+                            return `
+                                <tr style="border-bottom: 1px solid #eee; ${isOverdue ? 'background-color: #fff3cd;' : ''}">
+                                    <td><strong>${typeEmoji} ${typeLabel}</strong></td>
+                                    <td>${act.where}</td>
+                                    <td>${act.book || '-'} ${act.page ? '(p. ' + act.page + ')' : ''}</td>
+                                    <td>${act.exercises || '-'}</td>
+                                    <td>${supportLabel}</td>
+                                    <td><strong>${dueDate}</strong> ${isOverdue ? '⚠️' : ''}</td>
+                                    <td>${act.teacher}</td>
+                                    <td>
+                                        <button class="btn btn-primary" onclick="editActivity('${id}')" style="padding: 4px 8px; font-size: 11px;">✏️</button>
+                                        <button class="btn btn-danger" onclick="deleteActivity('${id}')" style="padding: 4px 8px; font-size: 11px;">🗑️</button>
+                                    </td>
+                                </tr>
+                                ${act.notes ? `<tr style="background-color: #f5f5f5;"><td colspan="8" style="padding: 8px; font-size: 12px; color: #666;"><strong>Nòt:</strong> ${act.notes}</td></tr>` : ''}
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        function editActivity(activityId) {
+            const activity = activities[activityId];
+            if (!activity) return;
+
+            // Populate form with activity data
+            document.getElementById('activityType').value = activity.type;
+            document.getElementById('activityWhere').value = activity.where;
+            document.getElementById('activityBook').value = activity.book || '';
+            document.getElementById('activityPage').value = activity.page || '';
+            document.getElementById('activitySupport').value = activity.support || '';
+            document.getElementById('activityDueDate').value = activity.dueDate;
+            document.getElementById('activityTeacher').value = activity.teacher || '';
+            document.getElementById('activityExercises').value = activity.exercises || '';
+            document.getElementById('activityNotes').value = activity.notes || '';
+
+            // Change button text
+            const btn = document.querySelector('[onclick="addActivity()"]');
+            if (btn) {
+                btn.textContent = '✏️ Mete Jou Aktivite';
+                btn.onclick = () => updateActivity(activityId);
+            }
+
+            // Scroll to form
+            document.getElementById('activityType').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function updateActivity(activityId) {
+            const type = document.getElementById('activityType').value;
+            const where = document.getElementById('activityWhere').value;
+            const book = document.getElementById('activityBook').value;
+            const page = document.getElementById('activityPage').value;
+            const support = document.getElementById('activitySupport').value;
+            const dueDate = document.getElementById('activityDueDate').value;
+            const teacher = document.getElementById('activityTeacher').value;
+            const exercises = document.getElementById('activityExercises').value;
+            const notes = document.getElementById('activityNotes').value;
+
+            const updates = {
+                type, where, book, page, support, dueDate, 
+                teacher, exercises, notes
+            };
+
+            db.ref('activities/' + activityId).update(updates).then(() => {
+                alert('Aktivite a te mete jou!');
+                // Reset form
+                document.getElementById('activityType').value = '';
+                document.getElementById('activityWhere').value = '';
+                document.getElementById('activityBook').value = '';
+                document.getElementById('activityPage').value = '';
+                document.getElementById('activitySupport').value = '';
+                document.getElementById('activityDueDate').value = '';
+                document.getElementById('activityTeacher').value = '';
+                document.getElementById('activityExercises').value = '';
+                document.getElementById('activityNotes').value = '';
+                const btn = document.querySelector('[onclick*="updateActivity"]');
+                if (btn) {
+                    btn.textContent = '➕ Ajoute Aktivite';
+                    btn.onclick = () => addActivity();
+                }
+                updateUI();
+            });
+        }
+
+        function deleteActivity(activityId) {
+            if (confirm('Ou asire w vle efase aktivite sa a?')) {
+                db.ref('activities/' + activityId).remove().then(() => {
+                    alert('Aktivite a te efase!');
+                    updateUI();
+                });
+            }
         }
 
         function updateUI() {
