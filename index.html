@@ -748,6 +748,73 @@
             padding: 8px 4px;
         }
     </style>
+    <script>
+        // Service Worker Registration et Notifications
+        if ('serviceWorker' in navigator) {
+            const swCode = `
+                self.addEventListener('push', event => {
+                    const data = event.data ? event.data.json() : {};
+                    const options = {
+                        body: data.body || 'Notification de PMBF',
+                        icon: 'data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 192 192%27><rect fill=%271a73e8%27 width=%27192%27 height=%27192%27/><text x=%2796%27 y=%27120%27 font-size=%27100%27 font-weight=%27bold%27 fill=%27white%27 text-anchor=%27middle%27>P</text></svg>',
+                        badge: 'data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 192 192%27><rect fill=%271a73e8%27 width=%27192%27 height=%27192%27/><text x=%2796%27 y=%27120%27 font-size=%27100%27 font-weight=%27bold%27 fill=%27white%27 text-anchor=%27middle%27>P</text></svg>',
+                        tag: data.tag || 'pmbf-notification',
+                        requireInteraction: false
+                    };
+                    self.registration.showNotification(data.title || 'PMBF', options);
+                });
+
+                self.addEventListener('notificationclick', event => {
+                    event.notification.close();
+                    event.waitUntil(
+                        clients.matchAll({type: 'window'}).then(clientList => {
+                            for (let i = 0; i < clientList.length; i++) {
+                                if (clientList[i].url == '/' && 'focus' in clientList[i])
+                                    return clientList[i].focus();
+                            }
+                            if (clients.openWindow)
+                                return clients.openWindow('/');
+                        })
+                    );
+                });
+            `;
+            
+            const blob = new Blob([swCode], {type: 'application/javascript'});
+            const swUrl = URL.createObjectURL(blob);
+            navigator.serviceWorker.register(swUrl).catch(err => {
+                console.log('Service Worker pa ka rejistore:', err);
+            });
+        }
+
+        // Request notification permission
+        function requestNotificationPermission() {
+            if ('Notification' in window && Notification.permission === 'default') {
+                Notification.requestPermission().then(permission => {
+                    if (permission === 'granted') {
+                        console.log('✅ Notification permission granted');
+                    }
+                });
+            }
+        }
+
+        // Send notification
+        function sendNotification(title, options = {}) {
+            if ('Notification' in window && Notification.permission === 'granted') {
+                const defaultOptions = {
+                    icon: 'data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 192 192%27><rect fill=%271a73e8%27 width=%27192%27 height=%27192%27/><text x=%2796%27 y=%27120%27 font-size=%27100%27 font-weight=%27bold%27 fill=%27white%27 text-anchor=%27middle%27>P</text></svg>',
+                    badge: 'data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 192 192%27><rect fill=%271a73e8%27 width=%27192%27 height=%27192%27/><text x=%2796%27 y=%27120%27 font-size=%27100%27 font-weight=%27bold%27 fill=%27white%27 text-anchor=%27middle%27>P</text></svg>',
+                    tag: 'pmbf-notification',
+                    ...options
+                };
+                new Notification(title, defaultOptions);
+            }
+        }
+
+        // Initialize on load
+        window.addEventListener('load', () => {
+            requestNotificationPermission();
+        });
+    </script>
 </head>
 <body>
     <div class="app-container" id="app">
@@ -2182,6 +2249,13 @@ self.addEventListener('fetch', event => {
                 alert(`✅ Élève ajouté avec la clé: ${key}`);
                 document.getElementById('studentName').value = '';
                 document.getElementById('studentEmail').value = '';
+                
+                // Send notification
+                sendNotification(`👨‍🎓 Nouvo Elev: ${name}`, {
+                    body: `Klè d'Akses: ${key}`,
+                    tag: 'student-' + Date.now()
+                });
+                updateUI();
             });
         }
 
@@ -2296,6 +2370,13 @@ self.addEventListener('fetch', event => {
                 document.getElementById('budgetImage').value = '';
                 document.getElementById('budgetIncludeInClass').checked = false;
                 document.getElementById('budgetPreview').textContent = '';
+                
+                // Send notification
+                sendNotification(`💰 Nouvo Bidjè: ${title}`, {
+                    body: `${totalAmount}G total | ${amount}G pa elev`,
+                    tag: 'budget-' + Date.now()
+                });
+                updateUI();
             });
         }
 
@@ -2523,6 +2604,12 @@ self.addEventListener('fetch', event => {
                 document.getElementById('expenseAmount').value = '';
                 document.getElementById('expenseDesc').value = '';
                 document.getElementById('expenseDate').value = '';
+                
+                // Send notification
+                sendNotification('💸 Depans Enregistre!', {
+                    body: `${amount}G - ${description}`,
+                    tag: 'expense-' + Date.now()
+                });
                 updateUI();
             }).catch(err => {
                 console.error('Erè:', err);
@@ -2597,6 +2684,13 @@ self.addEventListener('fetch', event => {
                 alert('✅ Don programmé');
                 document.getElementById('donAmount').value = '';
                 document.getElementById('donInterval').value = '';
+                
+                // Send notification
+                sendNotification('🎁 Nouvo Donasyon!', {
+                    body: `${amount}G chak ${intervalDays} jou`,
+                    tag: 'donation-' + Date.now()
+                });
+                updateUI();
             });
         }
 
@@ -3441,6 +3535,30 @@ self.addEventListener('fetch', event => {
                 document.getElementById('activityExercises').value = '';
                 document.getElementById('activityNotes').value = '';
                 alert('Aktivite a te ajoute avèk siksè!');
+                
+                // Send notification
+                const typeLabels = {
+                    'devoir-individuel': 'Devoir Individuel',
+                    'devoir-groupe': 'Devoir en Groupe',
+                    'lecon': 'Leçon à Étudier',
+                    'expose-individuel': 'Exposé Individuelle',
+                    'expose-groupe': 'Exposé en Groupe'
+                };
+                const typeEmojis = {
+                    'devoir-individuel': '📝',
+                    'devoir-groupe': '👥📝',
+                    'lecon': '📖',
+                    'expose-individuel': '🎤',
+                    'expose-groupe': '👥🎤'
+                };
+                const typeLabel = typeLabels[type] || type;
+                const typeEmoji = typeEmojis[type] || '📌';
+                
+                sendNotification(`${typeEmoji} Nouvo Aktivite!`, {
+                    body: `${typeLabel}\nProfesseur: ${teacher}\nDat Limit: ${new Date(dueDate).toLocaleDateString('ht-HT')}`,
+                    tag: 'activity-' + Date.now()
+                });
+                
                 updateUI();
             }).catch(err => {
                 console.error('Erè kand ajoute aktivite:', err);
