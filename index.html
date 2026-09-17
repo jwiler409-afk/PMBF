@@ -747,6 +747,20 @@
             gap: 10px;
             padding: 8px 4px;
         }
+
+        .chat-tab {
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 8px rgba(26, 115, 232, 0.2);
+        }
+
+        .chat-tab:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(26, 115, 232, 0.3);
+        }
+
+        .chat-tab:active {
+            transform: translateY(0);
+        }
     </style>
     <script>
         // Service Worker Registration et Notifications
@@ -3384,6 +3398,8 @@ self.addEventListener('fetch', event => {
 
         function closeChat() {
             activeChatWith = null;
+            const searchInput = document.getElementById('chatSearchInput');
+            if (searchInput) searchInput.value = '';
             updateUI();
         }
 
@@ -3420,15 +3436,42 @@ self.addEventListener('fetch', event => {
             const friends = getMyFriends();
             const friendIds = new Set(friends.map(f => f.id));
             const others = getAllUsers().filter(u => u.id !== currentUser.id && !friendIds.has(u.id) && !getFriendStatus(u.id));
+            
+            // Get search value
+            const searchInput = document.getElementById('chatSearchInput');
+            const searchQuery = searchInput ? searchInput.value.toLowerCase() : '';
+            
+            // Filter friends based on search
+            const filteredFriends = searchQuery ? friends.filter(f => f.name.toLowerCase().includes(searchQuery)) : friends;
+            const filteredOthers = searchQuery ? others.filter(u => u.name.toLowerCase().includes(searchQuery)) : others;
 
             return `
                 <h2>💬 Chat</h2>
+                
+                <div style="margin-bottom: 15px;">
+                    <input type="text" id="chatSearchInput" placeholder="🔍 Cherche non..." 
+                           style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px;"
+                           oninput="updateUI()">
+                </div>
+
+                ${filteredFriends.length > 0 ? `
+                    <h3 style="margin-top: 15px; margin-bottom: 10px;">👥 Zanmi yo (${filteredFriends.length})</h3>
+                    <div style="display: flex; gap: 8px; overflow-x: auto; margin-bottom: 15px; padding-bottom: 8px;">
+                        ${filteredFriends.map(f => `
+                            <div class="chat-tab" onclick="openChat('${f.id}', '${(f.name || '').replace(/'/g, "\\'")}')" 
+                                 style="background: #1a73e8; color: white; padding: 8px 12px; border-radius: 20px; cursor: pointer; white-space: nowrap; font-size: 12px; font-weight: 600; min-width: fit-content;">
+                                ${initials(f.name)}
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : ''}
+
                 ${received.length > 0 ? `
                     <h3 style="margin-top: 15px;">🔔 Demandes Reçues</h3>
                     ${received.map(r => `
                         <div class="chat-request-row">
                             <div class="chat-avatar">${initials(r.fromName)}</div>
-                            <span style="flex:1;">${r.fromName}</span>
+                            <span style="flex:1; color: #666;">${r.fromName}</span>
                             <button class="btn btn-success" onclick="acceptFriendRequest('${r.id}')" style="padding: 5px 10px; font-size: 12px;">✅</button>
                             <button class="btn btn-danger" onclick="declineFriendRequest('${r.id}')" style="padding: 5px 10px; font-size: 12px;">❌</button>
                         </div>
@@ -3439,28 +3482,23 @@ self.addEventListener('fetch', event => {
                     ${sent.map(r => `
                         <div class="chat-request-row">
                             <div class="chat-avatar">${initials(r.toName)}</div>
-                            <span style="flex:1;">${r.toName}</span>
+                            <span style="flex:1; color: #666;">${r.toName}</span>
                             <span style="color:#999; font-size: 12px;">⏳ En attente</span>
                             <button class="btn btn-secondary" onclick="declineFriendRequest('${r.id}')" style="padding: 5px 10px; font-size: 12px;">Annuler</button>
                         </div>
                     `).join('')}
                 ` : ''}
-                <h3 style="margin-top: 15px;">👥 Mes Amis (${friends.length})</h3>
-                ${friends.length === 0 ? '<p style="color:#999; font-size: 13px;">Poko gen zanmi. Ajoute yon moun anba a!</p>' : friends.map(f => `
-                    <div class="chat-friend-row" onclick="openChat('${f.id}', '${(f.name || '').replace(/'/g, "\\'")}')">
-                        <div class="chat-avatar">${initials(f.name)}</div>
-                        <span style="flex:1;">${f.name}</span>
-                        <span style="color:#1a73e8;">›</span>
-                    </div>
-                `).join('')}
-                <h3 style="margin-top: 15px;">➕ Ajouter un Ami</h3>
-                ${others.length === 0 ? '<p style="color:#999; font-size: 13px;">Pa gen lòt moun disponib.</p>' : others.map(u => `
-                    <div class="chat-friend-row">
-                        <div class="chat-avatar">${initials(u.name)}</div>
-                        <span style="flex:1;">${u.name}</span>
-                        <button class="btn btn-primary" onclick="sendFriendRequest('${u.id}', '${(u.name || '').replace(/'/g, "\\'")}')" style="padding: 5px 10px; font-size: 12px;">➕ Ajouter</button>
-                    </div>
-                `).join('')}
+
+                ${filteredOthers.length > 0 ? `
+                    <h3 style="margin-top: 15px;">➕ Ajouter un Ami</h3>
+                    ${filteredOthers.map(u => `
+                        <div class="chat-friend-row">
+                            <div class="chat-avatar">${initials(u.name)}</div>
+                            <span style="flex:1; color: #666;">${u.name}</span>
+                            <button class="btn btn-primary" onclick="sendFriendRequest('${u.id}', '${(u.name || '').replace(/'/g, "\\'")}')" style="padding: 5px 10px; font-size: 12px;">➕</button>
+                        </div>
+                    `).join('')}
+                ` : (searchQuery ? '<p style="color:#999; font-size: 13px; margin-top: 15px;">Pap gen rezilta pou: <strong>' + searchQuery + '</strong></p>' : '')}
             `;
         }
 
@@ -3473,12 +3511,12 @@ self.addEventListener('fetch', event => {
                     <div class="chat-header">
                         <button class="btn btn-secondary" onclick="closeChat()" style="padding: 6px 10px; font-size: 12px;">← Retour</button>
                         <div class="chat-avatar">${initials(other.name)}</div>
-                        <span class="chat-header-name">${other.name}</span>
+                        <span class="chat-header-name" style="color: #1a73e8; font-weight: 600;">${initials(other.name)}</span>
                     </div>
                     <div class="chat-messages" id="chatMessagesBox">
                         ${msgs.length === 0 ? '<p style="text-align:center; color:#999; margin-top:30px;">Kòmanse chat la... 👋</p>' : msgs.map(m => `
                             <div class="chat-bubble ${m.fromId === currentUser.id ? 'chat-bubble-me' : 'chat-bubble-them'}">
-                                ${m.fromId !== currentUser.id ? `<div class="chat-bubble-sender">${m.fromName}</div>` : ''}
+                                ${m.fromId !== currentUser.id ? `<div class="chat-bubble-sender" style="font-size: 11px;">${initials(m.fromName)}</div>` : ''}
                                 <div>${escapeHtml(m.text)}</div>
                                 <div class="chat-bubble-time">${new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                             </div>
