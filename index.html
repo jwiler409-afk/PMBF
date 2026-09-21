@@ -1876,6 +1876,7 @@ self.addEventListener('fetch', event => {
                                         <div class="amount">Part par élève: ${budget.amount}G</div>
                                         ${budget.includeInClassCaisse ? '<div style="background: #d4edda; color: #155724; padding: 5px 8px; border-radius: 4px; font-size: 12px; margin-bottom: 8px;">✅ Va à la Caisse Classe</div>' : '<div style="background: #f8d7da; color: #721c24; padding: 5px 8px; border-radius: 4px; font-size: 12px; margin-bottom: 8px;">❌ Ne va pas à la Caisse Classe</div>'}
                                         <button class="btn btn-primary" onclick="showEditBudgetModal('${id}')" style="padding: 5px 10px; font-size: 12px;">✏️ Modifier</button>
+                                        <button class="btn btn-warning" onclick="showQuickEditAmountModal('${id}')" style="padding: 5px 10px; font-size: 12px;">💰 Montant</button>
                                         <button class="btn btn-secondary" onclick="toggleBudgetCaisse('${id}')" style="padding: 5px 10px; font-size: 12px;">${budget.includeInClassCaisse ? '❌ Retirer de Caisse' : '✅ Ajouter à Caisse'}</button>
                                         <button class="btn btn-secondary" onclick="showBudgetPaymentsModal('${id}')" style="padding: 5px 10px; font-size: 12px;">💵 Paiements</button>
                                         <button class="btn btn-danger" onclick="deleteBudget('${id}')" style="padding: 5px 10px; font-size: 12px;">Supprimer</button>
@@ -1961,6 +1962,31 @@ self.addEventListener('fetch', event => {
                                 `).join('') || '<tr><td colspan="5">Aucune demande en attente</td></tr>'}
                             </tbody>
                         </table>
+                    </div>
+
+                    <div class="card">
+                        <h2>💸 Retrait Direct Élève</h2>
+                        <p style="font-size: 13px; color: #666; margin-bottom: 15px;">Faire un retrait direct pour un élève</p>
+                        <div class="form-group">
+                            <label>Sélectionner Élève</label>
+                            <select id="directWithdrawStudent">
+                                <option value="">-- Chwazi yon elev --</option>
+                                ${Object.entries(students).map(([id, s]) => `<option value="${id}">${s.name}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Montant (Gourdes)</label>
+                            <input type="number" id="directWithdrawAmount" placeholder="Ex: 2000">
+                        </div>
+                        <div class="form-group">
+                            <label>Description</label>
+                            <input type="text" id="directWithdrawDesc" placeholder="Ex: Retrait pour fournitures">
+                        </div>
+                        <div class="form-group">
+                            <label>Date</label>
+                            <input type="date" id="directWithdrawDate">
+                        </div>
+                        <button class="btn btn-warning" onclick="makeDirectWithdrawal()">💸 Effectuer le Retrait</button>
                     </div>
                 </div>
             `;
@@ -2404,6 +2430,74 @@ self.addEventListener('fetch', event => {
             });
         }
 
+        function showQuickEditAmountModal(id) {
+            const budget = budgets[id];
+            if (!budget) return;
+            const currentAmount = budget.totalAmount || (budget.amount * Object.keys(students).length);
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 400px;">
+                    <span class="modal-close" onclick="this.parentElement.parentElement.remove()">✕</span>
+                    <h2>💰 Modifier le Montant</h2>
+                    <p style="font-size: 14px; color: #333; margin-bottom: 20px;">Budget: <strong>${budget.title}</strong></p>
+                    <div class="form-group">
+                        <label style="font-weight: 600;">Montant Actuel</label>
+                        <div style="background: #f0f0f0; padding: 10px; border-radius: 4px; margin-bottom: 15px; font-size: 16px; font-weight: bold;">
+                            ${currentAmount}G
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label style="font-weight: 600; color: #d9534f;">Nouveau Montant (Gourdes)</label>
+                        <input type="number" id="quickEditAmount" value="${currentAmount}" style="font-size: 16px; padding: 12px; background: #fff3cd; border: 2px solid #ffc107;">
+                    </div>
+                    <div id="quickEditPreview" style="font-size: 13px; color: #1a73e8; font-weight: 600; margin-bottom: 15px; background: #f0f7ff; padding: 10px; border-radius: 4px;"></div>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn btn-success" onclick="updateBudgetAmount('${id}')" style="flex: 1; font-size: 14px;">✅ Enregistrer</button>
+                        <button class="btn btn-secondary" onclick="this.parentElement.parentElement.parentElement.remove()" style="flex: 0.5;">Annuler</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            
+            // Update preview as user types
+            document.getElementById('quickEditAmount').addEventListener('input', () => {
+                const newAmount = parseFloat(document.getElementById('quickEditAmount').value);
+                const count = Object.keys(students).length || 1;
+                const perStudent = Math.ceil(newAmount / count);
+                document.getElementById('quickEditPreview').innerHTML = `${count} élèves × ${perStudent}G = ${newAmount}G`;
+            });
+            
+            // Trigger initial preview
+            document.getElementById('quickEditAmount').dispatchEvent(new Event('input'));
+        }
+
+        function updateBudgetAmount(id) {
+            const budget = budgets[id];
+            const oldAmount = budget.totalAmount || (budget.amount * Object.keys(students).length);
+            const newAmount = parseFloat(document.getElementById('quickEditAmount').value);
+
+            if (!newAmount || newAmount <= 0) {
+                alert('Veuillez entrer un montant valide');
+                return;
+            }
+
+            const count = Object.keys(students).length || 1;
+            const amount = Math.ceil(newAmount / count);
+
+            db.ref('budgets/' + id).update({ totalAmount: newAmount, amount }).then(() => {
+                alert(`✅ Montant mis à jour: ${oldAmount}G → ${newAmount}G`);
+                
+                // Send notification
+                sendNotification(`💰 Montant Modifié: ${budget.title}`, {
+                    body: `${oldAmount}G → ${newAmount}G | ${amount}G pa elev`,
+                    tag: 'amount-update-' + Date.now()
+                });
+                document.querySelector('.modal.active').remove();
+                updateUI();
+            });
+        }
+
         function showEditBudgetModal(id) {
             const budget = budgets[id];
             if (!budget) return;
@@ -2422,15 +2516,19 @@ self.addEventListener('fetch', event => {
                         <textarea id="editBudgetDesc">${budget.description || ''}</textarea>
                     </div>
                     <div class="form-group">
-                        <label>Montant Total du Budget (Gourdes)</label>
-                        <input type="number" id="editBudgetTotalAmount" value="${budget.totalAmount || ''}" oninput="updateBudgetPreview('editBudgetTotalAmount', 'editBudgetPreview')">
+                        <label style="font-weight: 600; color: #d9534f;">💰 Montant Total du Budget (Gourdes)</label>
+                        <p style="font-size: 13px; color: #666; margin-bottom: 8px;">Montant actuel: <strong>${budget.totalAmount || (budget.amount * Object.keys(students).length)}G</strong></p>
+                        <input type="number" id="editBudgetTotalAmount" value="${budget.totalAmount || ''}" oninput="updateBudgetPreview('editBudgetTotalAmount', 'editBudgetPreview')" style="background: #fff3cd; border: 2px solid #ffc107;">
                     </div>
-                    <div id="editBudgetPreview" style="font-size: 13px; color: #1a73e8; font-weight: 600; margin-bottom: 15px;"></div>
+                    <div id="editBudgetPreview" style="font-size: 13px; color: #1a73e8; font-weight: 600; margin-bottom: 15px; background: #f0f7ff; padding: 10px; border-radius: 4px;"></div>
                     <div class="form-group">
                         <label>Lien Image (URL)</label>
                         <input type="url" id="editBudgetImage" value="${budget.imageUrl || ''}">
                     </div>
-                    <button class="btn btn-success" onclick="updateBudget('${id}')">💾 Enregistrer</button>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn btn-success" onclick="updateBudget('${id}')" style="flex: 1;">💾 Enregistrer les Changements</button>
+                        <button class="btn btn-secondary" onclick="this.parentElement.parentElement.parentElement.remove()" style="flex: 0.5;">Annuler</button>
+                    </div>
                 </div>
             `;
             document.body.appendChild(modal);
@@ -2449,12 +2547,25 @@ self.addEventListener('fetch', event => {
                 return;
             }
 
+            const budget = budgets[id];
+            const oldAmount = budget.totalAmount || (budget.amount * Object.keys(students).length);
+            const amountChanged = oldAmount !== totalAmount;
+
             const count = Object.keys(students).length || 1;
             const amount = Math.ceil(totalAmount / count);
 
             db.ref('budgets/' + id).update({ title, description: desc, totalAmount, amount, imageUrl: image }).then(() => {
                 alert('✅ Budget mis à jour');
+                
+                // Send notification if amount changed
+                if (amountChanged) {
+                    sendNotification(`💰 Bidjè Mete Jou: ${title}`, {
+                        body: `${oldAmount}G → ${totalAmount}G | ${amount}G pa elev`,
+                        tag: 'budget-update-' + Date.now()
+                    });
+                }
                 document.querySelector('.modal.active').remove();
+                updateUI();
             });
         }
 
@@ -2475,17 +2586,23 @@ self.addEventListener('fetch', event => {
                     <span class="modal-close" onclick="this.parentElement.parentElement.remove()">✕</span>
                     <h2>💵 Paiements — ${budget.title}</h2>
                     <table class="table">
-                        <thead><tr><th>Élève</th><th>Déjà payé</th><th>Ajouter</th></tr></thead>
+                        <thead><tr><th>Élève</th><th>Payé</th><th>Ajouter</th><th>Modifier</th></tr></thead>
                         <tbody>
                             ${Object.entries(students).map(([sid, s]) => {
                                 const paid = (budgetPayments[budgetId] && budgetPayments[budgetId][sid]) || 0;
                                 return `
                                 <tr>
                                     <td>${s.name}</td>
-                                    <td>${paid}G / ${budget.amount}G</td>
+                                    <td><strong>${paid}G</strong> / ${budget.amount}G</td>
                                     <td>
-                                        <input type="number" id="pay_${sid}" placeholder="Montant" style="width: 90px; display:inline-block;">
-                                        <button class="btn btn-success" onclick="addBudgetPayment('${budgetId}', '${sid}')" style="padding: 5px 10px; font-size: 12px;">➕</button>
+                                        <input type="number" id="pay_${sid}" placeholder="Montant" style="width: 70px; display:inline-block;">
+                                        <button class="btn btn-success" onclick="addBudgetPayment('${budgetId}', '${sid}')" style="padding: 4px 8px; font-size: 11px;">➕</button>
+                                    </td>
+                                    <td>
+                                        ${paid > 0 ? `
+                                            <button class="btn btn-primary" onclick="showEditPaymentModal('${budgetId}', '${sid}', '${s.name}', ${paid})" style="padding: 4px 8px; font-size: 11px;">✏️</button>
+                                            <button class="btn btn-danger" onclick="resetBudgetPayment('${budgetId}', '${sid}')" style="padding: 4px 8px; font-size: 11px;">🗑️</button>
+                                        ` : '<span style="color: #999; font-size: 12px;">-</span>'}
                                     </td>
                                 </tr>`;
                             }).join('')}
@@ -2494,6 +2611,106 @@ self.addEventListener('fetch', event => {
                 </div>
             `;
             document.body.appendChild(modal);
+        }
+
+        function showEditPaymentModal(budgetId, studentId, studentName, currentAmount) {
+            const budget = budgets[budgetId];
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+            modal.innerHTML = `
+                <div class="modal-content" style="max-width: 450px;">
+                    <span class="modal-close" onclick="this.parentElement.parentElement.remove()">✕</span>
+                    <h2>✏️ Modifier le Paiement</h2>
+                    <p style="font-size: 14px; color: #666; margin-bottom: 15px;">
+                        <strong>${studentName}</strong> — ${budget.title}
+                    </p>
+                    <div class="form-group">
+                        <label>Montant Actuel</label>
+                        <div style="background: #f0f0f0; padding: 10px; border-radius: 4px; margin-bottom: 15px; font-size: 16px; font-weight: bold;">
+                            ${currentAmount}G / ${budget.amount}G
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label style="font-weight: 600; color: #d9534f;">Nouveau Montant (Gourdes)</label>
+                        <input type="number" id="editPaymentAmount" value="${currentAmount}" style="font-size: 16px; padding: 12px; background: #fff3cd; border: 2px solid #ffc107;">
+                    </div>
+                    <div id="editPaymentStatus" style="font-size: 13px; color: #666; margin-bottom: 15px; background: #f8f9fa; padding: 10px; border-radius: 4px;"></div>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn btn-success" onclick="updateBudgetPayment('${budgetId}', '${studentId}')" style="flex: 1; font-size: 14px;">✅ Enregistrer</button>
+                        <button class="btn btn-secondary" onclick="this.parentElement.parentElement.parentElement.remove()" style="flex: 0.5;">Annuler</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            
+            // Update status as user types
+            document.getElementById('editPaymentAmount').addEventListener('input', () => {
+                const newAmount = parseFloat(document.getElementById('editPaymentAmount').value);
+                const status = document.getElementById('editPaymentStatus');
+                if (newAmount === currentAmount) {
+                    status.innerHTML = '✓ Aucun changement';
+                    status.style.color = '#999';
+                } else if (newAmount > currentAmount) {
+                    status.innerHTML = `⬆️ Augmenter de ${newAmount - currentAmount}G`;
+                    status.style.color = '#28a745';
+                } else if (newAmount < currentAmount) {
+                    status.innerHTML = `⬇️ Réduire de ${currentAmount - newAmount}G`;
+                    status.style.color = '#d9534f';
+                }
+            });
+            
+            // Trigger initial status
+            document.getElementById('editPaymentAmount').dispatchEvent(new Event('input'));
+        }
+
+        function updateBudgetPayment(budgetId, studentId) {
+            const newAmount = parseFloat(document.getElementById('editPaymentAmount').value);
+            if (newAmount < 0) {
+                alert('Le montant ne peut pas être négatif');
+                return;
+            }
+
+            const ref = db.ref('budgetPayments/' + budgetId + '/' + studentId);
+            ref.once('value').then(snap => {
+                const oldAmount = snap.val() || 0;
+                ref.set(newAmount).then(() => {
+                    const change = newAmount - oldAmount;
+                    const changeText = change >= 0 ? `+${change}G` : `${change}G`;
+                    alert(`✅ Montant modifié: ${oldAmount}G → ${newAmount}G (${changeText})`);
+                    
+                    // Send notification
+                    sendNotification(`💵 Paiement Modifié`, {
+                        body: `${oldAmount}G → ${newAmount}G`,
+                        tag: 'payment-update-' + Date.now()
+                    });
+                    
+                    document.querySelector('.modal.active').remove();
+                    // Reopen payments modal
+                    setTimeout(() => showBudgetPaymentsModal(budgetId), 100);
+                });
+            });
+        }
+
+        function resetBudgetPayment(budgetId, studentId) {
+            if (confirm('Êtes-vous sûr de vouloir réinitialiser ce paiement à 0G?')) {
+                const ref = db.ref('budgetPayments/' + budgetId + '/' + studentId);
+                ref.once('value').then(snap => {
+                    const oldAmount = snap.val() || 0;
+                    ref.set(0).then(() => {
+                        alert(`✅ Paiement réinitialisé: ${oldAmount}G → 0G`);
+                        
+                        // Send notification
+                        sendNotification(`💵 Paiement Supprimé`, {
+                            body: `${oldAmount}G annulé`,
+                            tag: 'payment-reset-' + Date.now()
+                        });
+                        
+                        // Refresh modal
+                        document.querySelector('.modal.active').remove();
+                        setTimeout(() => showBudgetPaymentsModal(budgetId), 100);
+                    });
+                });
+            }
         }
 
         function addBudgetPayment(budgetId, studentId) {
@@ -2640,6 +2857,52 @@ self.addEventListener('fetch', event => {
                     console.error('Erè:', err);
                 });
             }
+        }
+
+        function makeDirectWithdrawal() {
+            const studentId = document.getElementById('directWithdrawStudent').value;
+            const amount = parseFloat(document.getElementById('directWithdrawAmount').value);
+            const description = document.getElementById('directWithdrawDesc').value;
+            const date = document.getElementById('directWithdrawDate').value;
+
+            if (!studentId || !amount || !date) {
+                alert('Tanpri, ranpli tout jaden obligatwa yo!');
+                return;
+            }
+
+            const student = students[studentId];
+            if (!student) {
+                alert('Elev pa valid');
+                return;
+            }
+
+            const withdrawalData = {
+                studentId,
+                type: 'retrait',
+                amount,
+                description,
+                date,
+                status: 'approuve',
+                timestamp: Date.now()
+            };
+
+            db.ref('cashBox').push(withdrawalData).then(() => {
+                alert(`✅ Retrait de ${amount}G approuvé pour ${student.name}`);
+                document.getElementById('directWithdrawStudent').value = '';
+                document.getElementById('directWithdrawAmount').value = '';
+                document.getElementById('directWithdrawDesc').value = '';
+                document.getElementById('directWithdrawDate').value = '';
+                
+                // Send notification
+                sendNotification(`💸 Retrait Approuvé: ${student.name}`, {
+                    body: `${amount}G - ${description || 'Retrait direct'}`,
+                    tag: 'withdrawal-' + Date.now()
+                });
+                updateUI();
+            }).catch(err => {
+                console.error('Erè:', err);
+                alert('Erè: ' + err.message);
+            });
         }
 
         // Dons
@@ -2794,11 +3057,9 @@ self.addEventListener('fetch', event => {
             Object.entries(budgets).forEach(([budgetId, budget]) => {
                 if (budget.includeInClassCaisse) {
                     // Compter l'argent collecté pour ce budget
-                    const collectedAmount = Object.values(budgetPayments).reduce((sum, payment) => {
-                        if (payment.budgetId === budgetId) {
-                            return sum + parseFloat(payment.amount || 0);
-                        }
-                        return sum;
+                    const budgetPaymentsByStudent = budgetPayments[budgetId] || {};
+                    const collectedAmount = Object.values(budgetPaymentsByStudent).reduce((sum, payment) => {
+                        return sum + parseFloat(payment || 0);
                     }, 0);
                     budgetTotal += collectedAmount;
                 }
