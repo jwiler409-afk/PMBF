@@ -1146,6 +1146,7 @@ self.addEventListener('fetch', event => {
         let activities = {};
         let classExpenses = {};
         let donPaymentsRecord = {};
+        let donPaymentRequests = {};
         let activeChatWith = null;
         let activeSectionIndex = 0;
         let adminPassword = '1a2b3c'; // Stockée localement
@@ -1250,6 +1251,11 @@ self.addEventListener('fetch', event => {
 
             db.ref('donPaymentsRecord').on('value', snapshot => {
                 donPaymentsRecord = snapshot.val() || {};
+                updateUI();
+            });
+
+            db.ref('donPaymentRequests').on('value', snapshot => {
+                donPaymentRequests = snapshot.val() || {};
                 updateUI();
             });
         }
@@ -1447,7 +1453,7 @@ self.addEventListener('fetch', event => {
             navTabs.innerHTML = '';
             const sections = isAdmin ? 
                 ['Élèves', 'Budgets', 'Caisse', 'Dons', 'Roulette', 'Partenaires', 'Chat', 'Aktivité', 'Paramètres'] :
-                ['Tableau de Bord', 'Caisse Personnelle', 'Dons', 'Roulette', 'Partenaires', 'Aktivité', 'Chat'];
+                ['Tableau de Bord', 'Caisse Personnelle', 'Dons', 'Roulette', 'Partenaires', 'Aktivité', 'Chat', 'Historique'];
             currentSectionLabels = sections;
 
             sections.forEach((section, index) => {
@@ -1710,21 +1716,41 @@ self.addEventListener('fetch', event => {
             `;
 
             // Dons
+            const totalDonationsPaid = Object.entries(donCampaigns).reduce((sum, [id, camp]) => {
+                const periods = getCampaignPeriods(camp);
+                const paid = periods.filter(p => donPayments[id] && donPayments[id][p] && donPayments[id][p][currentUser.id]).length;
+                return sum + (paid * camp.amount);
+            }, 0);
+
             sectionsDiv.innerHTML += `
                 <div class="section">
                     <div class="card">
                         <h2>🎁 Dons</h2>
+                        ${totalDonationsPaid > 0 ? `
+                            <div style="background: #d4edda; border-left: 4px solid #28a745; padding: 12px; margin-bottom: 15px; border-radius: 4px;">
+                                <p style="margin: 0; color: #155724; font-size: 14px;">
+                                    <strong>💰 Total Donné:</strong> ${totalDonationsPaid}G
+                                </p>
+                            </div>
+                        ` : ''}
                         ${Object.keys(donCampaigns).length === 0 ? '<p>Aucun don programmé pour le moment.</p>' : ''}
                         ${Object.entries(donCampaigns).map(([id, camp]) => {
                             const dateKey = getCurrentPeriodKey(camp);
                             const paid = !!(donPayments[id] && donPayments[id][dateKey] && donPayments[id][dateKey][currentUser.id]);
                             const missed = getCampaignPeriods(camp).filter(p => !(donPayments[id] && donPayments[id][p] && donPayments[id][p][currentUser.id]));
+                            const totalUnpaid = missed.length * camp.amount;
+                            const periods = getCampaignPeriods(camp);
+                            const totalPaidThisCampaign = periods.filter(p => donPayments[id] && donPayments[id][p] && donPayments[id][p][currentUser.id]).length * camp.amount;
                             return `
                                 <div class="card" style="background: #f8f9fa;">
                                     <p><strong>Montant:</strong> ${camp.amount}G — <strong>Chaque:</strong> ${camp.intervalDays} jour(s)</p>
+                                    <p><strong>Total Payé pour ce Don:</strong> <span style="color: #28a745; font-weight: 600;">${totalPaidThisCampaign}G</span></p>
                                     <p><strong>Période actuelle:</strong> ${dateKey}</p>
                                     <p style="margin-top: 8px;">${paid ? '<span style="color:#28a745; font-weight:600;">✅ Payé</span>' : '<span style="color:#dc3545; font-weight:600;">❌ Pas encore payé</span>'}</p>
-                                    ${missed.length > 0 ? `<p style="color:#dc3545; font-size: 13px; margin-top: 5px;">⚠️ ${missed.length} période(s) impayée(s) — Total: ${missed.length * camp.amount}G</p>` : ''}
+                                    ${missed.length > 0 ? `
+                                        <p style="color:#dc3545; font-size: 13px; margin-top: 5px; margin-bottom: 10px;">⚠️ ${missed.length} période(s) impayée(s) — Total: ${totalUnpaid}G</p>
+                                        <button class="btn btn-warning" onclick="requestDonPayment('${id}', ${totalUnpaid})" style="padding: 6px 12px; font-size: 12px;">💬 Demander Paiement</button>
+                                    ` : ''}
                                 </div>
                             `;
                         }).join('')}
@@ -1769,6 +1795,16 @@ self.addEventListener('fetch', event => {
                     <div class="card">
                         <h2>📚 Aktivite yo</h2>
                         ${renderStudentActivities()}
+                    </div>
+                </div>
+            `;
+
+            // Historique (Student History)
+            sectionsDiv.innerHTML += `
+                <div class="section">
+                    <div class="card">
+                        <h2>📜 Historique des Transactions</h2>
+                        ${renderStudentHistory()}
                     </div>
                 </div>
             `;
@@ -1866,7 +1902,12 @@ self.addEventListener('fetch', event => {
                     <div class="card">
                         <h3>Budgets Actifs</h3>
                         <div class="grid">
-                            ${Object.entries(budgets).map(([id, budget]) => `
+                            ${Object.entries(budgets).map(([id, budget]) => {
+                                const collectedAmount = Object.values(budgetPayments[id] || {}).reduce((sum, payment) => {
+                                    return sum + parseFloat(payment || 0);
+                                }, 0);
+                                const percentage = budget.totalAmount ? Math.round((collectedAmount / budget.totalAmount) * 100) : 0;
+                                return `
                                 <div class="budget-card">
                                     <div class="budget-image">${budget.emoji || '💰'}</div>
                                     <div class="budget-content">
@@ -1874,6 +1915,14 @@ self.addEventListener('fetch', event => {
                                         <p>${budget.description}</p>
                                         <div class="amount">Budget total: ${budget.totalAmount || (budget.amount * Object.keys(students).length)}G</div>
                                         <div class="amount">Part par élève: ${budget.amount}G</div>
+                                        <div style="background: #e7f3ff; border-left: 4px solid #1a73e8; padding: 8px; margin: 8px 0; border-radius: 4px;">
+                                            <p style="margin: 0; font-size: 13px; color: #1a73e8;">
+                                                <strong>💵 Collecté: ${collectedAmount}G (${percentage}%)</strong>
+                                            </p>
+                                            <div style="background: #fff; border-radius: 3px; height: 6px; margin-top: 4px; overflow: hidden;">
+                                                <div style="background: #1a73e8; height: 100%; width: ${percentage}%;"></div>
+                                            </div>
+                                        </div>
                                         ${budget.includeInClassCaisse ? '<div style="background: #d4edda; color: #155724; padding: 5px 8px; border-radius: 4px; font-size: 12px; margin-bottom: 8px;">✅ Va à la Caisse Classe</div>' : '<div style="background: #f8d7da; color: #721c24; padding: 5px 8px; border-radius: 4px; font-size: 12px; margin-bottom: 8px;">❌ Ne va pas à la Caisse Classe</div>'}
                                         <button class="btn btn-primary" onclick="showEditBudgetModal('${id}')" style="padding: 5px 10px; font-size: 12px;">✏️ Modifier</button>
                                         <button class="btn btn-warning" onclick="showQuickEditAmountModal('${id}')" style="padding: 5px 10px; font-size: 12px;">💰 Montant</button>
@@ -1882,7 +1931,8 @@ self.addEventListener('fetch', event => {
                                         <button class="btn btn-danger" onclick="deleteBudget('${id}')" style="padding: 5px 10px; font-size: 12px;">Supprimer</button>
                                     </div>
                                 </div>
-                            `).join('')}
+                            `;
+                            }).join('')}
                         </div>
                     </div>
                 </div>
@@ -2034,10 +2084,53 @@ self.addEventListener('fetch', event => {
                             `;
                         }).join('')}
                     </div>
+                    <div class="card">
+                        <h3>📜 Historique des Périodes de Dons</h3>
+                        ${Object.keys(donCampaigns).length === 0 ? '<p>Aucun don programmé.</p>' : `
+                            ${Object.entries(donCampaigns).map(([id, camp]) => {
+                                const periods = getCampaignPeriods(camp);
+                                const currentDateKey = getCurrentPeriodKey(camp);
+                                const pastPeriods = periods.filter(p => p < currentDateKey);
+                                
+                                if (pastPeriods.length === 0) return '';
+                                
+                                return `
+                                <div class="card" style="background: #f5f5f5; margin-bottom: 15px;">
+                                    <h4 style="margin-top: 0; color: #666;">📅 Don ${camp.amount}G (historique)</h4>
+                                    <table class="table" style="font-size: 12px;">
+                                        <thead>
+                                            <tr>
+                                                <th>Période</th>
+                                                <th colspan="${Object.keys(students).length}" style="text-align: center;">Vérification des Paiements</th>
+                                            </tr>
+                                            <tr>
+                                                <th>Période</th>
+                                                ${Object.entries(students).map(([sid, s]) => `<th style="font-size: 11px; padding: 4px; text-align: center; width: 35px;" title="${s.name}">${s.name.substring(0, 3)}</th>`).join('')}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${pastPeriods.map(p => `
+                                                <tr style="background: ${p === pastPeriods[pastPeriods.length - 1] ? '#e8f4f8' : 'white'};">
+                                                    <td style="font-weight: 600;">${p}</td>
+                                                    ${Object.entries(students).map(([sid, s]) => {
+                                                        const paid = !!(donPayments[id] && donPayments[id][p] && donPayments[id][p][sid]);
+                                                        return `
+                                                        <td style="text-align: center; padding: 4px;">
+                                                            <input type="checkbox" ${paid ? 'checked' : ''} onchange="toggleDonPayment('${id}', '${p}', '${sid}', this.checked)" style="width: 16px; height: 16px; cursor: pointer;">
+                                                        </td>
+                                                        `;
+                                                    }).join('')}
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                `;
+                            }).join('')}
+                        `}
+                    </div>
                 </div>
             `;
-
-            // Roulette Section
             const recentSpins = Object.entries(wheelSpins).sort((a, b) => (b[1].timestamp || 0) - (a[1].timestamp || 0)).slice(0, 30);
             sectionsDiv.innerHTML += `
                 <div class="section">
@@ -2225,6 +2318,41 @@ self.addEventListener('fetch', event => {
                         <div id="activitiesListContainer">
                             ${renderActivitiesList()}
                         </div>
+                    </div>
+                </div>
+            `;
+
+            // Demandes de Paiement des Dons
+            const pendingDonRequests = Object.entries(donPaymentRequests).filter(([id, req]) => req.status === 'pending');
+            sectionsDiv.innerHTML += `
+                <div class="section">
+                    <div class="card">
+                        <h2>💬 Demandes de Paiement des Dons</h2>
+                        ${pendingDonRequests.length === 0 ? '<p style="color: #999;">Aucune demande en attente.</p>' : `
+                            <table class="table" style="font-size: 13px;">
+                                <thead>
+                                    <tr>
+                                        <th>Élève</th>
+                                        <th>Montant</th>
+                                        <th>Date Demande</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${pendingDonRequests.map(([id, req]) => `
+                                        <tr>
+                                            <td><strong>${req.studentName}</strong></td>
+                                            <td>${req.amount}G</td>
+                                            <td>${req.requestDate}</td>
+                                            <td>
+                                                <button class="btn btn-success" onclick="approveDonRequest('${id}')" style="padding: 4px 8px; font-size: 11px;">✅ Valider</button>
+                                                <button class="btn btn-danger" onclick="rejectDonRequest('${id}')" style="padding: 4px 8px; font-size: 11px;">❌ Refuser</button>
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        `}
                     </div>
                 </div>
             `;
@@ -2941,6 +3069,74 @@ self.addEventListener('fetch', event => {
                 }
             });
             return unpaid;
+        }
+
+        function requestDonPayment(campaignId, amount) {
+            const student = students[currentUser.id];
+            const campaign = donCampaigns[campaignId];
+            if (!student || !campaign) return;
+
+            const requestId = Date.now() + '-' + Math.random();
+            const request = {
+                studentId: currentUser.id,
+                studentName: student.name,
+                campaignId,
+                amount,
+                donAmount: campaign.amount,
+                status: 'pending',
+                requestDate: new Date().toISOString().split('T')[0],
+                timestamp: Date.now()
+            };
+
+            db.ref('donPaymentRequests/' + requestId).set(request).then(() => {
+                alert(`✅ Demande de paiement envoyée!\n\nMontant: ${amount}G\n\nL'admin va valider votre demande.`);
+                
+                // Send notification
+                sendNotification(`💬 Demande de Paiement Envoyée`, {
+                    body: `${student.name} a demandé le paiement de ${amount}G`,
+                    tag: 'don-request-' + Date.now()
+                });
+                updateUI();
+            });
+        }
+
+        function approveDonRequest(requestId) {
+            if (!confirm('Valider cette demande de paiement?')) return;
+
+            const request = donPaymentRequests[requestId];
+            if (!request) return;
+
+            // Record the donation payment
+            const ref = db.ref('donPayments/' + request.campaignId + '/' + getCurrentPeriodKey(donCampaigns[request.campaignId]) + '/' + request.studentId);
+            ref.set(true).then(() => {
+                // Update request status
+                db.ref('donPaymentRequests/' + requestId + '/status').set('approved').then(() => {
+                    alert(`✅ Demande approuvée!\n\n${request.studentName}: ${request.amount}G`);
+                    
+                    // Send notification
+                    sendNotification(`✅ Paiement Approuvé`, {
+                        body: `${request.studentName} - ${request.amount}G approuvé`,
+                        tag: 'don-approved-' + Date.now()
+                    });
+                    updateUI();
+                });
+            });
+        }
+
+        function rejectDonRequest(requestId) {
+            if (!confirm('Refuser cette demande de paiement?')) return;
+
+            db.ref('donPaymentRequests/' + requestId + '/status').set('rejected').then(() => {
+                const request = donPaymentRequests[requestId];
+                alert(`❌ Demande refusée`);
+                
+                // Send notification
+                sendNotification(`❌ Paiement Refusé`, {
+                    body: `${request.studentName} - Demande refusée`,
+                    tag: 'don-rejected-' + Date.now()
+                });
+                updateUI();
+            });
         }
 
         function addDonCampaign() {
@@ -3863,6 +4059,94 @@ self.addEventListener('fetch', event => {
                 console.error('Erè kand ajoute aktivite:', err);
                 alert('Erè: ' + err.message);
             });
+        }
+
+        function renderStudentHistory() {
+            const student = students[currentUser.id];
+            if (!student) return '<p>Erreur: Élève non trouvé</p>';
+
+            // Collect all transactions
+            const transactions = [];
+
+            // Budget payments
+            Object.entries(budgets).forEach(([budgetId, budget]) => {
+                const paid = (budgetPayments[budgetId] && budgetPayments[budgetId][currentUser.id]) || 0;
+                if (paid > 0) {
+                    transactions.push({
+                        type: 'budget',
+                        title: `Budget: ${budget.title}`,
+                        amount: paid,
+                        total: budget.amount,
+                        status: paid >= budget.amount ? '✅ Complet' : '⏳ Partiel',
+                        color: paid >= budget.amount ? '#28a745' : '#ffc107'
+                    });
+                }
+            });
+
+            // Donation payments
+            Object.entries(donCampaigns).forEach(([campaignId, campaign]) => {
+                if (donPayments[campaignId] && donPayments[campaignId][currentUser.id]) {
+                    const paid = Object.keys(donPayments[campaignId][currentUser.id]).length * campaign.amount;
+                    transactions.push({
+                        type: 'donation',
+                        title: `Don: ${campaign.amount}G`,
+                        amount: paid,
+                        status: '✅ Payé',
+                        color: '#1a73e8'
+                    });
+                }
+            });
+
+            // Cash box deposits
+            Object.entries(cashBox).forEach(([id, cash]) => {
+                if (cash.studentId === currentUser.id && cash.type === 'depot') {
+                    transactions.push({
+                        type: 'deposit',
+                        title: 'Dépôt Personnel',
+                        amount: cash.amount,
+                        date: cash.date,
+                        status: '✅ Accepté',
+                        color: '#28a745'
+                    });
+                }
+            });
+
+            if (transactions.length === 0) {
+                return '<p style="color: #999; font-size: 13px;">Aucune transaction enregistrée.</p>';
+            }
+
+            return `
+                <table class="table" style="font-size: 13px;">
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Montant</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${transactions.map((t, i) => `
+                            <tr style="border-left: 4px solid ${t.color};">
+                                <td><strong>${t.title}</strong></td>
+                                <td>${t.amount}G ${t.total ? `/ ${t.total}G` : ''}</td>
+                                <td><span style="color: ${t.color}; font-weight: 600;">${t.status}</span></td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+                <div style="margin-top: 20px; padding: 15px; background: #f0f7ff; border-radius: 8px;">
+                    <h3 style="margin-top: 0; color: #1a73e8;">📊 Résumé</h3>
+                    <p style="font-size: 13px; margin: 5px 0;">
+                        <strong>Total Transactions:</strong> ${transactions.length}
+                    </p>
+                    <p style="font-size: 13px; margin: 5px 0;">
+                        <strong>Montant Total Payé:</strong> ${transactions.reduce((sum, t) => sum + t.amount, 0)}G
+                    </p>
+                    <p style="font-size: 13px; margin: 5px 0;">
+                        <strong>Dernière Mise à Jour:</strong> ${new Date().toLocaleDateString('ht-HT')}
+                    </p>
+                </div>
+            `;
         }
 
         function renderStudentActivities() {
