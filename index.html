@@ -867,6 +867,9 @@
             <!-- Notification Banner -->
             <div id="notifBanner"></div>
 
+            <!-- Baniè Estati Koneksyon (sync an tan reyèl) -->
+            <div id="connStatusBanner"></div>
+
             <!-- Navigation Tabs -->
             <div class="nav-tabs" id="navTabs"></div>
 
@@ -885,10 +888,8 @@
         // Service Worker Registration
         if ('serviceWorker' in navigator) {
             const swCode = `
-const CACHE_NAME = 'pmbf-cache-v1';
+const CACHE_NAME = 'pmbf-cache-v2';
 const urlsToCache = [
-    '/',
-    '/index.html',
     '/manifest.json'
 ];
 
@@ -918,31 +919,41 @@ self.addEventListener('activate', event => {
     self.clients.claim();
 });
 
+// NETWORK-FIRST pou paj la (index/navigation): sa evite elèv yo rete bloke
+// sou yon ansyen vèsyon kach lè admin fè yon chanjman. Nou eseye rezo a
+// an premye; si sa echwe (telefòn offline), lè sa a sèlman nou sèvi ak kach la.
 self.addEventListener('fetch', event => {
     if (event.request.method !== 'GET') {
         return;
     }
 
-    event.respondWith(
-        caches.match(event.request).then(response => {
-            if (response) {
-                return response;
-            }
+    const isNavigation = event.request.mode === 'navigate' ||
+        (event.request.headers.get('accept') || '').includes('text/html');
 
-            return fetch(event.request).then(response => {
-                if (!response || response.status !== 200 || response.type === 'error') {
-                    return response;
-                }
-
+    if (isNavigation) {
+        event.respondWith(
+            fetch(event.request).then(response => {
                 const responseToCache = response.clone();
                 caches.open(CACHE_NAME).then(cache => {
                     cache.put(event.request, responseToCache);
                 });
-
                 return response;
-            }).catch(() => {
-                return caches.match('/index.html');
-            });
+            }).catch(() => caches.match(event.request).then(r => r || caches.match('/index.html')))
+        );
+        return;
+    }
+
+    // Lòt resous (manifest, elatriye): kach-premye ak mizajou an background
+    event.respondWith(
+        caches.match(event.request).then(response => {
+            const fetchPromise = fetch(event.request).then(networkResponse => {
+                if (networkResponse && networkResponse.status === 200) {
+                    const responseToCache = networkResponse.clone();
+                    caches.open(CACHE_NAME).then(cache => cache.put(event.request, responseToCache));
+                }
+                return networkResponse;
+            }).catch(() => response);
+            return response || fetchPromise;
         })
     );
 });
@@ -1151,6 +1162,55 @@ self.addEventListener('fetch', event => {
         let activeSectionIndex = 0;
         let adminPassword = '1a2b3c'; // Stockée localement
 
+        // ===== SYNC AN TAN REYÈL — FIKS BUG SENKWONIZASYON =====
+        // Pwoblèm: sou mobil, konneksyon WebSocket Firebase la ka "domi" lè app la
+        // ale nan background (telefòn vewouye, lòt app louvri, elatriye). Lè sa a,
+        // .on('value') sispann resevwa mizajou, kidonk solid/aktivite admin ajoute
+        // pa parèt bò kote elèv la toutotan li pa relanse app la konplètman.
+        // Fiks: nou siveye estati koneksyon an (.info/connected), epi chak fwa
+        // app la retounen vizib oswa entènèt la retabli, nou fòse yon relekti
+        // konplè (once) sou tout branch done yo, anplis nou refè yon relekti
+        // otomatik chak 30 segond pandan app la ouvri kòm filè sekirite.
+        let isDbConnected = true;
+
+        function renderConnectionBanner() {
+            const el = document.getElementById('connStatusBanner');
+            if (!el) return;
+            el.innerHTML = isDbConnected ? '' :
+                '<div class="alert alert-warning" style="margin-bottom:10px;">🔌 Koneksyon ak sèvè a pèdi — n ap eseye rekonekte otomatikman...</div>';
+        }
+
+        function forceResyncAllData() {
+            if (!currentUser) return;
+            const paths = ['students', 'budgets', 'cashBox', 'budgetPayments', 'donCampaigns', 'donPayments',
+                'partners', 'settings', 'wheelCampaigns', 'wheelSlices', 'wheelSpins', 'birthdayMessages',
+                'friendRequests', 'chats', 'activities', 'classExpenses', 'donPaymentsRecord', 'donPaymentRequests'];
+            paths.forEach(path => {
+                db.ref(path).once('value').then(snapshot => {
+                    const val = snapshot.val() || {};
+                    if (path === 'students') students = val;
+                    else if (path === 'budgets') budgets = val;
+                    else if (path === 'cashBox') cashBox = val;
+                    else if (path === 'budgetPayments') budgetPayments = val;
+                    else if (path === 'donCampaigns') donCampaigns = val;
+                    else if (path === 'donPayments') donPayments = val;
+                    else if (path === 'partners') partners = val;
+                    else if (path === 'settings') { settings = val; renderFooter(); }
+                    else if (path === 'wheelCampaigns') wheelCampaigns = val;
+                    else if (path === 'wheelSlices') wheelSlices = val;
+                    else if (path === 'wheelSpins') wheelSpins = val;
+                    else if (path === 'birthdayMessages') birthdayMessages = val;
+                    else if (path === 'friendRequests') friendRequests = val;
+                    else if (path === 'chats') chats = val;
+                    else if (path === 'activities') activities = val;
+                    else if (path === 'classExpenses') classExpenses = val;
+                    else if (path === 'donPaymentsRecord') donPaymentsRecord = val;
+                    else if (path === 'donPaymentRequests') donPaymentRequests = val;
+                    updateUI();
+                }).catch(err => console.log('Rafrechisman echwe pou ' + path + ':', err));
+            });
+        }
+
         // Gestion du bouton "Retour" du téléphone
         history.pushState({ appState: 'init' }, '', location.href);
         window.addEventListener('popstate', function () {
@@ -1169,7 +1229,55 @@ self.addEventListener('fetch', event => {
         });
 
         // Load Data from Firebase
+        let syncWatchersAttached = false;
+
+        function attachSyncWatchers() {
+            if (syncWatchersAttached) return;
+            syncWatchersAttached = true;
+
+            // Siveye estati koneksyon Firebase an tan reyèl
+            db.ref('.info/connected').on('value', snap => {
+                const wasConnected = isDbConnected;
+                isDbConnected = snap.val() === true;
+                renderConnectionBanner();
+                if (isDbConnected && !wasConnected) {
+                    // Koneksyon an retabli apre yon koupi — rafrechi tout done yo
+                    forceResyncAllData();
+                }
+            });
+
+            // Lè telefòn nan tounen vizib (soti nan background) oswa entènèt la retabli,
+            // fòse yon rekoneksyon ak yon rafrechisman konplè pou evite done ki "kole"
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible' && currentUser) {
+                    db.goOnline();
+                    forceResyncAllData();
+                }
+            });
+            window.addEventListener('online', () => {
+                if (currentUser) {
+                    db.goOnline();
+                    forceResyncAllData();
+                }
+            });
+            window.addEventListener('focus', () => {
+                if (currentUser) {
+                    forceResyncAllData();
+                }
+            });
+
+            // Filè sekirite: rafrechisman manyèl chak 30s pandan app la ouvri
+            setInterval(() => {
+                if (currentUser && document.visibilityState === 'visible') {
+                    forceResyncAllData();
+                }
+            }, 30000);
+        }
+
         function loadData() {
+            db.goOnline();
+            attachSyncWatchers();
+
             db.ref('students').on('value', snapshot => {
                 students = snapshot.val() || {};
                 updateUI();
@@ -2538,14 +2646,15 @@ self.addEventListener('fetch', event => {
                 document.getElementById('budgetImage').value = '';
                 document.getElementById('budgetIncludeInClass').checked = false;
                 document.getElementById('budgetPreview').textContent = '';
-                
+
                 // Send notification
                 sendNotification(`💰 Nouvo Bidjè: ${title}`, {
                     body: `${totalAmount}G total | ${amount}G pa elev`,
                     tag: 'budget-' + Date.now()
                 });
                 updateUI();
-            });
+                forceResyncAllData();
+            }).catch(err => alert('❌ Kreyasyon bidjè a echwe: ' + err.message));
         }
 
         function toggleBudgetCaisse(budgetId) {
@@ -2623,7 +2732,8 @@ self.addEventListener('fetch', event => {
                 });
                 document.querySelector('.modal.active').remove();
                 updateUI();
-            });
+                forceResyncAllData();
+            }).catch(err => alert('❌ Modifikasyon montan an echwe: ' + err.message));
         }
 
         function showEditBudgetModal(id) {
@@ -2694,7 +2804,8 @@ self.addEventListener('fetch', event => {
                 }
                 document.querySelector('.modal.active').remove();
                 updateUI();
-            });
+                forceResyncAllData();
+            }).catch(err => alert('❌ Modifikasyon bidjè a echwe: ' + err.message));
         }
 
         function deleteBudget(id) {
@@ -2814,9 +2925,10 @@ self.addEventListener('fetch', event => {
                     
                     document.querySelector('.modal.active').remove();
                     // Reopen payments modal
+                    forceResyncAllData();
                     setTimeout(() => showBudgetPaymentsModal(budgetId), 100);
-                });
-            });
+                }).catch(err => alert('❌ Modifikasyon peman an echwe: ' + err.message));
+            }).catch(err => alert('❌ Erè lekti: ' + err.message));
         }
 
         function resetBudgetPayment(budgetId, studentId) {
@@ -2826,18 +2938,19 @@ self.addEventListener('fetch', event => {
                     const oldAmount = snap.val() || 0;
                     ref.set(0).then(() => {
                         alert(`✅ Paiement réinitialisé: ${oldAmount}G → 0G`);
-                        
+
                         // Send notification
                         sendNotification(`💵 Paiement Supprimé`, {
                             body: `${oldAmount}G annulé`,
                             tag: 'payment-reset-' + Date.now()
                         });
-                        
+
                         // Refresh modal
                         document.querySelector('.modal.active').remove();
+                        forceResyncAllData();
                         setTimeout(() => showBudgetPaymentsModal(budgetId), 100);
-                    });
-                });
+                    }).catch(err => alert('❌ Reyinisyalizasyon an echwe: ' + err.message));
+                }).catch(err => alert('❌ Erè lekti: ' + err.message));
             }
         }
 
@@ -2853,9 +2966,10 @@ self.addEventListener('fetch', event => {
                 const current = snap.val() || 0;
                 ref.set(current + amount).then(() => {
                     document.querySelector('.modal.active').remove();
+                    forceResyncAllData();
                     showBudgetPaymentsModal(budgetId);
-                });
-            });
+                }).catch(err => alert('❌ Ajou peman an echwe: ' + err.message));
+            }).catch(err => alert('❌ Erè lekti: ' + err.message));
         }
 
         function showBudgetDetail(budgetId) {
@@ -2899,7 +3013,8 @@ self.addEventListener('fetch', event => {
             }).then(() => {
                 alert('✅ Dépôt enregistré');
                 document.querySelector('.modal.active').remove();
-            });
+                forceResyncAllData();
+            }).catch(err => alert('❌ Depo a echwe, li pa anrejistre: ' + err.message));
         }
 
         function requestWithdrawal() {
@@ -2923,15 +3038,20 @@ self.addEventListener('fetch', event => {
                 alert('✅ Demande de retrait envoyée. En attente de validation.');
                 document.getElementById('withdrawAmount').value = '';
                 document.getElementById('withdrawDesc').value = '';
-            });
+                forceResyncAllData();
+            }).catch(err => alert('❌ Demand lan echwe, li pa anrejistre: ' + err.message));
         }
 
         function approveWithdrawal(id) {
-            db.ref('cashBox/' + id).update({ status: 'approuve' });
+            db.ref('cashBox/' + id).update({ status: 'approuve' }).then(() => {
+                forceResyncAllData();
+            }).catch(err => alert('❌ Echèk validasyon: ' + err.message));
         }
 
         function rejectWithdrawal(id) {
-            db.ref('cashBox/' + id).update({ status: 'refuse' });
+            db.ref('cashBox/' + id).update({ status: 'refuse' }).then(() => {
+                forceResyncAllData();
+            }).catch(err => alert('❌ Echèk refi: ' + err.message));
         }
 
         function statusLabel(status) {
@@ -3027,6 +3147,7 @@ self.addEventListener('fetch', event => {
                     tag: 'withdrawal-' + Date.now()
                 });
                 updateUI();
+                forceResyncAllData();
             }).catch(err => {
                 console.error('Erè:', err);
                 alert('Erè: ' + err.message);
